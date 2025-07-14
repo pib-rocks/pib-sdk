@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pib-utils"
+version = "1.0"
+description = "Forward & inverse kinematics helpers for isento's pib robot arms"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {file = "LICENSE"}
+
+authors = [
+  {name = "pib.rocks", email = "team@pib.rocks"}
+]
+
+dependencies = [
+  "roboticstoolbox-python>=1.1.5",
+  "spatialmath-python>=1.0.3",
+  "numpy>=1.23"
+]
+
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent"
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff", "build", "twine"]
+
+[project.urls]
+Homepage = "https://github.com/isento/pib-utils"
+Issues   = "https://github.com/isento/pib-utils/issues"
