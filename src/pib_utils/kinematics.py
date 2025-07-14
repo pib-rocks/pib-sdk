@@ -17,7 +17,7 @@ def _to_deg(seq_rad: Sequence[float]) -> np.ndarray:
 
 def _get_robot(side: Literal["right", "left"]) -> DHRobot:
     #Instantiate either pib_right() or pib_left() from DH_model.pib_DH.
-    mod = import_module("pib_utils.DH_model.pib_DH")
+    mod = import_module("pib_utils.pib_DH")
     cls_name = {"right": "pib_right", "left": "pib_left"}[side.lower()]
     return getattr(mod, cls_name)()
 
