@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=69", "wheel"]
+requires = ["setuptools>=70", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -35,6 +35,7 @@ Issues   = "https://github.com/isento/pib-utils/issues"
 
 [tool.setuptools]               
 package-dir = {"" = "src"}       # root of importable 
+license-files = []  
 
 [tool.setuptools.packages.find] 
 where = ["src"]                  # scan “src/” for packages
