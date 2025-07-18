@@ -3,9 +3,9 @@ requires = ["setuptools>=70", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pib-utils"
-version = "1.0"
-description = "Forward & inverse kinematics helpers for isento's pib robot arms"
+name = "pib-sdk"
+version = "1.1"
+description = "Forward & inverse kinematics helpers for pib's robot arms"
 readme = "README.md"
 requires-python = ">=3.9"
 license = {file = "LICENSE"}
@@ -30,8 +30,7 @@ classifiers = [
 dev = ["pytest", "ruff", "build", "twine"]
 
 [project.urls]
-Homepage = "https://github.com/isento/pib-utils"
-Issues   = "https://github.com/isento/pib-utils/issues"
+Homepage = "https://github.com/pib-rocks/pib-sdk"
 
 [tool.setuptools]               
 package-dir = {"" = "src"}       # root of importable 
