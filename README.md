@@ -6,7 +6,8 @@ SDK for **pib** including forward, inverse kinematics and trajectory generatio
 * Ready‑made Denavit‑Hartenberg (DH) parameters for **pib**  
 * Multi point trajectory generation
 * Numeric **Jacobian** and analytical **pose error** utilities  
-* Zero ROS / Gazebo dependencies – pure Python ≥ 3.9  
+* Zero ROS / Gazebo dependencies – pure Python ≥ 3.9
+* Writing joint values to ROS topic without ROS enbironment requirement  
 
 ## Installation
 ```
@@ -23,4 +24,7 @@ Specify right or left to calculate for designated pib arm
 '''
 print('FK pose:', fk('right', [0,45,0,0,90,0]))
 print('IK angles:', ik('right', xyz=[150,0,350]))
+# To write or read values from joints
+write('shoulder_vertical_right', position=20, velocity=5000)
+read('shoulder_horizontal_left')
 ```
