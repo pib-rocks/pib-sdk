@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=70", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pib-sdk"
+version = "1.1"
+description = "Forward & inverse kinematics helpers for pib's robot arms"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {file = "LICENSE"}
+
+authors = [
+  {name = "pib.rocks", email = "team@pib.rocks"}
+]
+
+dependencies = [
+  "roboticstoolbox-python>=1.1.1",
+  "spatialmath-python>=1.0.3",
+  "numpy >=1.17.4,<2.0"
+]
+
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent"
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff", "build", "twine"]
+
+[project.urls]
+Homepage = "https://github.com/pib-rocks/pib-sdk"
+
+[tool.setuptools]               
+package-dir = {"" = "src"}       # root of importable 
+license-files = []  
+
+[tool.setuptools.packages.find] 
+where = ["src"]                  # scan “src/” for packages
