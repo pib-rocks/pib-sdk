@@ -1,378 +1,477 @@
-
 from __future__ import annotations
-from typing import Optional, Any, Dict, Callable, Iterable, Tuple, List
-import threading
+from typing import Optional, Any, Dict, Callable, List, Iterable, Union, Set
 import time
 import json
 import logging
 import argparse
+import threading
+import os
+import sqlite3
 import roslibpy
 
-# ----------------------------- Logging setup -----------------------------
-
+# ============================= Logging =====================================
 log = logging.getLogger("pib.control")
-handler = logging.StreamHandler()
-formatter = logging.Formatter("[%(levelname)s] %(asctime)s %(name)s: %(message)s")
-handler.setFormatter(formatter)
+_handler = logging.StreamHandler()
+_handler.setFormatter(logging.Formatter("[%(levelname)s] %(asctime)s %(name)s: %(message)s"))
 if not log.handlers:
-    log.addHandler(handler)
+    log.addHandler(_handler)
 log.setLevel(logging.INFO)
 
+# ============================= Public constants & tokens ====================
+zero_position: int = 0  # explicit int 0, usable in w.move(..., zero_position)
 
-# ----------------------------- Conversions -------------------------------
+class _Token:
+    __slots__ = ("name",)
+    def __init__(self, name: str):
+        self.name = name
+    def __repr__(self) -> str:
+        return self.name
 
-def _normalize_ros_type(t: str | None) -> str | None:
-    """
-    Normalize ROS type names between ROS1 ("pkg/Type") and ROS2 ("pkg/msg/Type").
-    """
-    if t is None:
-        return None
-    return t.replace("/msg/", "/")
+# Group/action tokens (usable without quotes)
+All                 = _Token("All")
+default             = _Token("default")
+open_hand_left      = _Token("open_hand_left")
+close_hand_left     = _Token("close_hand_left")
+open_hand_right     = _Token("open_hand_right")
+close_hand_right    = _Token("close_hand_right")
+resting_position    = _Token("resting_position")
+# Accept common misspellings
+resting_postion     = resting_position
+resting_postiion    = resting_position
 
-def _as_joint_trajectory_dict(motor_name: str, position_int: int) -> Dict[str, Any]:
-    """
-    trajectory_msgs/JointTrajectory represented as a rosbridge JSON dict.
-    """
-    return {
-        "joint_names": [motor_name],
-        "points": [{"positions": [int(position_int)]}],
-    }
+# Arm grouping tokens
+right_arm           = _Token("right_arm")
+arm_right           = right_arm  # alias
+left_arm            = _Token("left_arm")
+arm_left            = left_arm   # alias
 
+# ============================= Helpers =====================================
+def _wait_connected(ros: roslibpy.Ros, timeout: float = 5.0) -> None:
+    start = time.time()
+    while not ros.is_connected and time.time() - start < timeout:
+        time.sleep(0.01)
+    if not ros.is_connected:
+        raise ConnectionError(f"ROSBridge not connected after {timeout:.1f}s")
 
-def _deg_to_internal(position_deg: float) -> int:
-    """
-    Map degrees (−90..90) to internal units ×100 (−9000..9000).
-    """
+def _deg_to_internal(position_deg: float) -> float:
+    """Map degrees (-90..90) -> internal units x100 (-9000..9000)."""
     if not -90.0 <= float(position_deg) <= 90.0:
         raise ValueError(f"position_deg must be between -90 and 90 (got {position_deg})")
-    return int(round(float(position_deg) * 100))
+    return float(round(float(position_deg) * 100.0))
 
+def _jt_point(positions_internal: List[float]) -> Dict[str, Any]:
+    """Build a single JointTrajectoryPoint for N joints with 1 ms duration."""
+    return {
+        "positions": [float(p) for p in positions_internal],
+        "velocities": [],
+        "accelerations": [],
+        "effort": [],
+        "time_from_start": {"sec": 0, "nanosec": 1_000_000},  # 1 ms
+    }
 
-def _internal_to_deg(position: Optional[float]) -> Optional[float]:
-    if position is None:
-        return None
-    try:
-        return float(position) / 100.0
-    except Exception:
-        return None
-
-
-# ----------------------------- Writers -----------------------------------
-
+# ============================= Write (Service-first) =======================
 class Write:
     """
-    Publish motor updates through ROSBridge:
-      - Positions -> /joint_trajectory (trajectory_msgs/JointTrajectory)
-      - Other settings -> /motor_settings (datatypes/MotorSettings)
+    Service-based motor control over rosbridge, with multi-motor support and *dynamic* motor discovery.
 
-    Diagnostics:
-      - debug logging
-      - send_with_ack() waits until your message is observed on the bus
-      - health_check() verifies rosbridge and required topics/types
+    Discovery sources (in order):
+      1) SQLite DB table `motor` (column `name`) if available.
+         - Default path: /home/pib/app/pib-backend/pib_api/flask/pibdata.db
+         - Override with env PIB_MOTOR_DB or constructor arg `db_path`.
+      2) Live telemetry from /motor_settings messages (names seen at runtime).
+
+    Services:
+      - /apply_motor_settings  (datatypes/ApplyMotorSettings)
+      - /apply_joint_trajectory (datatypes/ApplyJointTrajectory)
+
+    Telemetry topics (optional):
+      - /joint_trajectory  (trajectory_msgs/JointTrajectory)
+      - /motor_settings    (datatypes/MotorSettings)
     """
 
     def __init__(
         self,
         host: str = "localhost",
         port: int = 9090,
+        *,
+        srv_apply_jt: str = "/apply_joint_trajectory",
+        srv_apply_ms: str = "/apply_motor_settings",
         jt_topic_name: str = "/joint_trajectory",
-        jt_message_type: str = "trajectory_msgs/JointTrajectory",
         ms_topic_name: str = "/motor_settings",
-        ms_message_type: str = "datatypes/MotorSettings",
+        db_path: Optional[str] = None,
         debug: bool = False,
     ):
         if debug:
             log.setLevel(logging.DEBUG)
 
-        self.host = host
-        self.port = port
-        self.jt_topic_name = jt_topic_name
-        self.jt_message_type = jt_message_type
-        self.ms_topic_name = ms_topic_name
-        self.ms_message_type = ms_message_type
-
-        # Connect to ROSBridge (websocket)
         self.ros = roslibpy.Ros(host=host, port=port)
-
-        # Register event hooks for visibility
-        try:
-            self.ros.on_ready(lambda: log.info("ROSBridge connection established"))
-            self.ros.on_close(lambda: log.warning("ROSBridge connection closed"))
-            self.ros.on_error(lambda err: log.error(f"ROSBridge error: {err}"))
-        except Exception:
-            # Older roslibpy might not support the on_* helpers
-            pass
-
-        log.debug("Connecting to ROSBridge...")
         self.ros.run()
-        log.debug("Connected: %s", self.ros.is_connected)
+        _wait_connected(self.ros)
 
-        # Publishers
-        self._jt_topic = roslibpy.Topic(self.ros, jt_topic_name, jt_message_type)
-        self._ms_topic = roslibpy.Topic(self.ros, ms_topic_name, ms_message_type)
+        # Services (command path)
+        self._svc_jt = roslibpy.Service(self.ros, srv_apply_jt, "datatypes/ApplyJointTrajectory")
+        self._svc_ms = roslibpy.Service(self.ros, srv_apply_ms, "datatypes/ApplyMotorSettings")
 
-        log.debug("Advertised publishers: %s, %s", jt_topic_name, ms_topic_name)
+        # Telemetry (optional)
+        self._jt_topic = roslibpy.Topic(self.ros, jt_topic_name, "trajectory_msgs/JointTrajectory")
+        self._ms_topic = roslibpy.Topic(self.ros, ms_topic_name, "datatypes/MotorSettings")
 
-    # ------------------ Diagnostics / health ------------------
+        # Dynamic discovery caches
+        self._motors_from_db: List[str] = []
+        self._motors_seen: Set[str] = set()
 
-    def health_check(self, timeout: float = 3.0) -> Dict[str, Any]:
-        """
-        Confirms connectivity and that required topics exist with the expected types,
-        using rosapi services (requires rosbridge_server + rosapi).
-        """
-        if not self.ros.is_connected:
-            raise ConnectionError("Not connected to ROSBridge")
+        # Subscribe to /motor_settings to collect names as they appear
+        def _collect_ms(msg: Dict[str, Any]):
+            name = msg.get("motor_name")
+            if name:
+                self._motors_seen.add(str(name))
+        self._ms_topic.subscribe(_collect_ms)
+        self._collector_cb = _collect_ms
 
+        # Pre-load from DB if present
+        self._db_path = db_path or os.getenv("PIB_MOTOR_DB") or "/home/pib/app/pib-backend/pib_api/flask/pibdata.db"
+        self._load_motors_from_db()
+
+        log.debug("Connected to rosbridge and prepared services.")
+
+    # -------------------- Discovery utilities --------------------
+    def _load_motors_from_db(self) -> None:
+        path = self._db_path
+        self._motors_from_db = []
         try:
-            svc = roslibpy.Service(self.ros, "/rosapi/topics", "rosapi/Topics")
-            req = roslibpy.ServiceRequest()
-            done = threading.Event()
-            out: Dict[str, Any] = {}
-
-            def _cb(resp: Dict[str, Any]):
-                out.update(resp or {})
-                done.set()
-
-            svc.call(req, callback=_cb, errback=lambda e: done.set())
-            ok = done.wait(timeout)
-            if not ok:
-                raise TimeoutError("Timed out calling /rosapi/topics")
-
-            topics: List[str] = out.get("topics", [])
-            types: List[str] = out.get("types", [])
-            tm = dict(zip(topics, types))
-
-            jt_found = tm.get(self.jt_topic_name)
-            ms_found = tm.get(self.ms_topic_name)
-            result = {
-                "connected": self.ros.is_connected,
-                "topics_present": {
-                    self.jt_topic_name: jt_found,
-                    self.ms_topic_name: ms_found,
-                },
-                "types_ok": (
-                    _normalize_ros_type(jt_found) == _normalize_ros_type(self.jt_message_type)
-                    and _normalize_ros_type(ms_found) == _normalize_ros_type(self.ms_message_type)
-                ),
-            }
-
-            log.info("Health: %s", json.dumps(result, indent=2))
-            return result
+            if path and os.path.exists(path):
+                with sqlite3.connect(path) as conn:
+                    cur = conn.cursor()
+                    # Try id-ordered if `id` exists; else just by name
+                    cols = {r[1] for r in cur.execute("PRAGMA table_info(motor)").fetchall()}
+                    if "id" in cols:
+                        rows = cur.execute("SELECT name FROM motor ORDER BY id").fetchall()
+                    else:
+                        rows = cur.execute("SELECT name FROM motor").fetchall()
+                    self._motors_from_db = [str(r[0]) for r in rows if r and r[0]]
+                    log.debug("Loaded %d motors from DB %s", len(self._motors_from_db), path)
+            else:
+                log.debug("Motor DB not found at %s", path)
         except Exception as e:
-            log.error("Health check failed: %s", e)
-            raise
+            log.warning("Failed to load motors from DB %s: %s", path, e)
+            self._motors_from_db = []
 
-    # ------------------ Publish APIs ------------------
+    def _get_all_motors(self) -> List[str]:
+        # Merge DB names and seen names (preserve DB order first), then seen
+        seen_only = [n for n in sorted(self._motors_seen) if n not in self._motors_from_db]
+        combined = list(self._motors_from_db) + seen_only
+        return combined
 
+    @staticmethod
+    def _is_finger(name: str) -> bool:
+        # Any motor that has _stretch at the end is a finger
+        return name.endswith("_stretch")
+
+    @staticmethod
+    def _is_left(name: str) -> bool:
+        return "left" in name
+
+    @staticmethod
+    def _is_right(name: str) -> bool:
+        return "right" in name
+
+    def _expand_motor_specs(self, specs: Iterable[Union[str, _Token]]) -> List[str]:
+        """Turn tokens/group names into concrete motor names using dynamic discovery."""
+        all_motors = self._get_all_motors()
+        names: List[str] = []
+        for s in specs:
+            if isinstance(s, _Token):
+                if s is All:
+                    if not all_motors:
+                        raise ValueError("No motors known yet. Ensure DB is present or publish /motor_settings once.")
+                    names.extend(all_motors)
+                elif s in (open_hand_left, close_hand_left, open_hand_right, close_hand_right):
+                    # Expand to the proper finger group
+                    fingers = [m for m in all_motors if self._is_finger(m) and ((self._is_left(m) and s in (open_hand_left, close_hand_left)) or (self._is_right(m) and s in (open_hand_right, close_hand_right)))]
+                    if not fingers:
+                        log.warning("No finger motors matched for token %s", s)
+                    names.extend(fingers)
+                elif s in (right_arm, arm_right):
+                    members = ["shoulder_vertical_right", "shoulder_horizontal_right", "upper_arm_right_rotation", "elbow_right", "lower_arm_right_rotation", "wrist_right"]
+                    if not members:
+                        log.warning("No right-arm motors matched.")
+                    names.extend(members)
+                elif s in (left_arm, arm_left):
+                    members = ["shoulder_vertical_left", "shoulder_horizontal_left", "upper_arm_left_rotation", "elbow_left", "lower_arm_left_rotation", "wrist_left"]
+                    if not members:
+                        log.warning("No left-arm motors matched.")
+                    names.extend(members)
+                elif s is resting_position:
+                    # Expand to All; special positions handled in move()
+                    if not all_motors:
+                        raise ValueError("No motors known yet for resting_position. Ensure DB or telemetry.")
+                    names.extend(all_motors)
+                elif s is default:
+                    # Not a motor spec ? handled in set()
+                    continue
+                else:
+                    raise ValueError(f"Unknown token: {s}")
+            else:
+                names.append(str(s))
+        # De-duplicate but keep order
+        seen = set()
+        out: List[str] = []
+        for n in names:
+            if n not in seen:
+                seen.add(n)
+                out.append(n)
+        return out
+
+    # -------------------- Settings ---------------------
+    def set(
+        self,
+        *motor_specs: Union[str, _Token],
+        verify_echo: bool = False,
+        echo_timeout: float = 1.0,
+        **settings: Any,
+    ) -> bool:
+        """
+        Apply settings to one or many motors.
+
+        Examples:
+          w.set("shoulder_vertical_right", velocity=6000, ...)
+          w.set("shoulder_vertical_right", "wrist_right", velocity=6000, ...)
+          w.set(All, velocity=6000, ...)
+          w.set(All, default)
+          w.set(All, default=True)    # keyword flag alternative
+        """
+        # Support positional `default` token or keyword `default=True`
+        m_specs = list(motor_specs)
+        use_default = False
+        if m_specs and isinstance(m_specs[-1], _Token) and m_specs[-1] is default:
+            m_specs.pop()
+            use_default = True
+        if settings.pop("default", False):
+            use_default = True
+        if use_default:
+            merged = dict(DEFAULT_SETTINGS)
+            merged.update(settings)
+            settings = merged
+
+        motor_names = self._expand_motor_specs(m_specs or [All])
+        results: List[bool] = []
+        for name in motor_names:
+            ms: Dict[str, Any] = {"motor_name": name}
+            for k, v in settings.items():
+                if v is not None and k != "position":
+                    ms[k] = v
+            req = roslibpy.ServiceRequest({"motor_settings": ms})
+            resp = self._svc_ms.call(req, timeout=5.0)
+            applied = bool(resp.get("settings_applied", False))
+            persisted = bool(resp.get("settings_persisted", False))
+            ok = applied or persisted
+            log.debug("set(%s) -> %s | resp=%s", name, ok, resp)
+
+            if not ok and verify_echo:
+                # Optional: verify via telemetry echo
+                evt = threading.Event()
+                observed: Dict[str, Any] = {}
+                def _on_ms(msg: Dict[str, Any]):
+                    if msg.get("motor_name") != name:
+                        return
+                    for k, v in ms.items():
+                        if k == "motor_name":
+                            continue
+                        if k in msg and msg[k] == v:
+                            observed[k] = v
+                    if any(k for k in ms.keys() if k != "motor_name" and k in observed):
+                        evt.set()
+                self._ms_topic.subscribe(_on_ms)
+                try:
+                    evt.wait(echo_timeout)
+                finally:
+                    try:
+                        self._ms_topic.unsubscribe(_on_ms)
+                    except Exception:
+                        pass
+                ok = evt.is_set()
+                if not ok:
+                    log.warning("apply_settings(%s): service False and telemetry did not confirm within %.2fs", name, echo_timeout)
+            results.append(ok)
+        return all(results)
+
+    # -------------------- Movement ---------------------
+    def _move_internal_units(self, joint_names: List[str], positions_internal: List[float]) -> bool:
+        """Move helper.
+        For a single joint we send one multi-field trajectory as before.
+        For multiple joints, many servers only honor the first joint; to
+        guarantee movement for all, we issue one service call per joint.
+        """
+        if len(joint_names) <= 1:
+            req = roslibpy.ServiceRequest({
+                "joint_trajectory": {
+                    "joint_names": joint_names,
+                    "points": [_jt_point(positions_internal)],
+                }
+            })
+            resp = self._svc_jt.call(req, timeout=5.0)
+            ok = bool(resp.get("successful", False))
+            log.debug("move_internal(single %s -> %s) -> %s", joint_names, positions_internal, ok)
+            return ok
+
+        all_ok = True
+        for name, pos in zip(joint_names, positions_internal):
+            req = roslibpy.ServiceRequest({
+                "joint_trajectory": {
+                    "joint_names": [name],
+                    "points": [_jt_point([pos])],
+                }
+            })
+            resp = self._svc_jt.call(req, timeout=5.0)
+            ok = bool(resp.get("successful", False))
+            log.debug("move_internal(seq %s -> %s) -> %s", name, pos, ok)
+            all_ok = all_ok and ok
+        return all_ok
+
+    def move(self, *args: Union[str, _Token, int, float]) -> bool:
+        '''
+        Move one or many motors.
+
+        Patterns supported:
+          - w.move("shoulder_vertical_right", -90.0)
+          - w.move("shoulder_vertical_right", "shoulder_horizontal_right", "elbow_right", -90.0)
+          - w.move(All, -90.0)
+          - w.move(All, zero_position)
+          - w.move(All, resting_position)
+          - w.move(open_hand_left)        # -90 for left fingers
+          - w.move(close_hand_left)       # +90 for left fingers
+          - w.move(open_hand_right)
+          - w.move(close_hand_right)
+          - w.move(right_arm, -30.0)      # everything ending with _right, except *_stretch and *thumb*opposition*
+          - w.move(left_arm, -30.0)
+          - w.move("a", "b", "c", -45.0, 10.0, 5.0)  # per-motor angles
+        '''
+        if not args:
+            raise TypeError("move() requires at least one argument")
+
+        # Split positional args into (specs) then (numbers)
+        specs: List[Union[str, _Token]] = []
+        numbers: List[float] = []
+        hit_number = False
+        for a in args:
+            if isinstance(a, (int, float)):
+                hit_number = True
+                numbers.append(float(a))
+            else:
+                if hit_number:
+                    raise TypeError("All motor specs must come before numeric positions")
+                specs.append(a)
+
+        # Special single-token hand/open/close cases without explicit numbers
+        if len(specs) == 1 and isinstance(specs[0], _Token) and not numbers:
+            tok = specs[0]
+            if tok in (open_hand_left, open_hand_right):
+                specs = [tok]
+                numbers = [-90.0]
+            elif tok in (close_hand_left, close_hand_right):
+                specs = [tok]
+                numbers = [90.0]
+            elif tok is resting_position:
+                # Create internal map: all -> 0; *elbow* -> 5000; *finger (_stretch)* -> -9000
+                motors = self._expand_motor_specs([All])
+                pos_internal: Dict[str, float] = {m: 0.0 for m in motors}
+                for m in motors:
+                    if "elbow" in m:
+                        pos_internal[m] = 5000.0
+                    if self._is_finger(m):
+                        pos_internal[m] = -9000.0
+                names = list(pos_internal.keys())
+                vals = [pos_internal[n] for n in names]
+                return self._move_internal_units(names, vals)
+            else:
+                # allow bare right_arm/left_arm with default broadcast 0 degrees
+                if tok in (right_arm, arm_right, left_arm, arm_left):
+                    specs = [tok]
+                    numbers = [0.0]
+                else:
+                    raise ValueError(f"Unsupported token for bare move(): {tok}")
+
+        # Expand motor names from specs (tokens/groups resolved to concrete names)
+        motor_names = self._expand_motor_specs(specs)
+        if not motor_names:
+            raise ValueError("No motors resolved from specifications")
+
+        # If token includes open/close hand alongside names and no numbers, broadcast defaults
+        if any(isinstance(s, _Token) and s in (open_hand_left, open_hand_right, close_hand_left, close_hand_right) for s in specs) and not numbers:
+            if any(isinstance(s, _Token) and s in (open_hand_left, open_hand_right) for s in specs):
+                numbers = [-90.0]
+            else:
+                numbers = [90.0]
+
+        # Determine positions list (degrees) -> convert to internal units
+        if not numbers:
+            raise TypeError("No target position provided for move(); supply a single angle or one per motor")
+        if len(numbers) == 1:
+            positions_internal = [_deg_to_internal(numbers[0])] * len(motor_names)
+        elif len(numbers) == len(motor_names):
+            positions_internal = [_deg_to_internal(n) for n in numbers]
+        else:
+            raise ValueError(
+                f"Provided {len(numbers)} positions for {len(motor_names)} motors; must be 1 or equal count"
+            )
+
+        return self._move_internal_units(motor_names, positions_internal)
+
+    # -------------------- Convenience ------------------
     def send(
         self,
         motor_name: str,
         *,
-        position_deg: Optional[float] = None,
-        velocity: Optional[int] = None,
-        acceleration: Optional[int] = None,
-        deceleration: Optional[int] = None,
-        turned_on: Optional[bool] = None,
-        pulse_width_min: Optional[int] = None,
-        pulse_width_max: Optional[int] = None,
-        rotation_range_min: Optional[int] = None,
-        rotation_range_max: Optional[int] = None,
-        period: Optional[int] = None,
-        visible: Optional[bool] = None,
-        invert: Optional[bool] = None,
-        extra_ms_fields: Optional[Dict[str, Any]] = None,
-        **kwargs: Any,
-    ) -> None:
-        """
-        - If position is provided, publish it via /joint_trajectory (only).
-        - All other non-None settings are sent via /motor_settings.
-        """
-        # 1) Position via JointTrajectory
-        if position_deg is not None:
-            pos_int = _deg_to_internal(position_deg)
-            jt_msg = _as_joint_trajectory_dict(motor_name, pos_int)
-            log.debug("Publishing JT: %s", jt_msg)
-            self._jt_topic.publish(roslibpy.Message(jt_msg))
-            log.info("JT published -> %s: position=%s (int=%s)", motor_name, position_deg, pos_int)
-
-        # 2) Remaining settings via MotorSettings (exclude position entirely)
-        ms_payload: Dict[str, Any] = {"motor_name": motor_name}
-        maybe = dict(
-            velocity=velocity,
-            acceleration=acceleration,
-            deceleration=deceleration,
-            turned_on=turned_on,
-            pulse_width_min=pulse_width_min,
-            pulse_width_max=pulse_width_max,
-            rotation_range_min=rotation_range_min,
-            rotation_range_max=rotation_range_max,
-            period=period,
-            visible=visible,
-            invert=invert,
-        )
-        for k, v in maybe.items():
-            if v is not None:
-                ms_payload[k] = v
-
-        if extra_ms_fields:
-            ms_payload.update({k: v for k, v in extra_ms_fields.items() if k != "position"})
-        if kwargs:
-            for k, v in kwargs.items():
-                if k != "position" and v is not None:
-                    ms_payload[k] = v
-
-        if any(k for k in ms_payload.keys() if k != "motor_name"):
-            log.debug("Publishing MS: %s", ms_payload)
-            self._ms_topic.publish(roslibpy.Message(ms_payload))
-            log.info("MS published -> %s: fields=%s", motor_name, [k for k in ms_payload if k != "motor_name"])
-
-    def send_with_ack(
-        self,
-        motor_name: str,
-        *,
-        position_deg: Optional[float] = None,
-        ack_timeout: float = 2.5,
-        observe_ms: bool = False,
+        position: Optional[float] = None,
+        verify_echo: bool = False,
+        echo_timeout: float = 1.0,
         **settings: Any,
-    ) -> bool:
-        """
-        Publish (like send) then wait to *observe* the matching message on the bus.
-        Returns True if observed within timeout, else False.
-        - For position: listens on /joint_trajectory for the motor name + position.
-        - If observe_ms=True: also waits for a /motor_settings update for that motor.
-        """
-        evt_jt = threading.Event()
-        evt_ms = threading.Event() if observe_ms else None
-
-        jt_expected_int = None
-        if position_deg is not None:
-            jt_expected_int = _deg_to_internal(position_deg)
-
-        # Subscribe BEFORE publish to avoid missing fast round-trips
-        def _on_jt(msg: Dict[str, Any]):
-            try:
-                names = msg.get("joint_names") or []
-                pts = msg.get("points") or []
-                if not names or not pts:
-                    return
-                name = names[0]
-                positions = pts[0].get("positions") or []
-                if not positions:
-                    return
-                pos = int(positions[0])
-                if name == motor_name and (jt_expected_int is None or pos == jt_expected_int):
-                    log.debug("Observed JT echo for %s: %s", motor_name, msg)
-                    evt_jt.set()
-            except Exception:
-                pass
-
-        self._jt_topic.subscribe(_on_jt)
-
-        def _on_ms(msg: Dict[str, Any]):
-            try:
-                if msg.get("motor_name") == motor_name:
-                    log.debug("Observed MS echo for %s: %s", motor_name, msg)
-                    if evt_ms:
-                        evt_ms.set()
-            except Exception:
-                pass
-
-        if evt_ms is not None:
-            self._ms_topic.subscribe(_on_ms)
-
-        # Publish
-        try:
-            self.send(motor_name, position_deg=position_deg, **settings)
-        except Exception as e:
-            log.error("Publish failed: %s", e)
-            # Unsubscribe before raising
-            try:
-                self._jt_topic.unsubscribe(_on_jt)
-            except Exception:
-                pass
-            if evt_ms is not None:
-                try:
-                    self._ms_topic.unsubscribe(_on_ms)
-                except Exception:
-                    pass
-            raise
-
-        # Wait
-        ok_jt = evt_jt.wait(ack_timeout) if jt_expected_int is not None else True
-        ok_ms = evt_ms.wait(ack_timeout) if evt_ms is not None else True
-
-        # Cleanup subscriptions
-        try:
-            self._jt_topic.unsubscribe(_on_jt)
-        except Exception:
-            pass
-        if evt_ms is not None:
-            try:
-                self._ms_topic.unsubscribe(_on_ms)
-            except Exception:
-                pass
-
-        if ok_jt and ok_ms:
-            log.info("ACK OK for %s (JT%s%s)", motor_name, "" if jt_expected_int is None else f"={jt_expected_int}",
-                     " + MS" if observe_ms else "")
-            return True
-        else:
-            if not ok_jt:
-                log.warning("ACK TIMEOUT: Did not observe JointTrajectory for %s within %.2fs", motor_name, ack_timeout)
-            if evt_ms is not None and not ok_ms:
-                log.warning("ACK TIMEOUT: Did not observe MotorSettings for %s within %.2fs", motor_name, ack_timeout)
-            return False
+    ) -> None:
+        """Convenience: apply settings then move if position is provided (single motor)."""
+        if any(v is not None for v in settings.values()):
+            self.set(motor_name, verify_echo=verify_echo, echo_timeout=echo_timeout, **settings)
+        if position is not None:
+            self.move(motor_name, float(position))
 
     def close(self) -> None:
-        # Cleanly close
         try:
-            self._jt_topic.unadvertise()
+            if hasattr(self, "_collector_cb"):
+                self._ms_topic.unsubscribe(self._collector_cb)
         except Exception:
             pass
-        try:
-            self._ms_topic.unadvertise()
-        except Exception:
-            pass
+        for t in (self._jt_topic, self._ms_topic):
+            try:
+                t.unadvertise()
+            except Exception:
+                pass
         try:
             self.ros.close()
         except Exception:
             pass
 
+# ============================= Defaults preset =============================
+DEFAULT_SETTINGS: Dict[str, Any] = dict(
+    turned_on=True,
+    velocity=16000,
+    acceleration=10000,
+    deceleration=5000,
+    period=19500,
+    pulse_width_min=700,
+    pulse_width_max=2500,
+    rotation_range_min=-9000,
+    rotation_range_max=9000,
+    visible=True,
+    invert=False,
+)
 
-def write(
-    motor_name: str,
-    *,
-    position_deg: Optional[float] = None,
-    host: str = "localhost",
-    port: int = 9090,
-    **settings: Any,
-) -> None:
-    """
-    One-shot helper: sends position (if provided) to /joint_trajectory,
-    and other settings to /motor_settings.
-    """
-    w = Write(host=host, port=port)
-    try:
-        w.send(motor_name=motor_name, position_deg=position_deg, **settings)
-    finally:
-        w.close()
-
-
-# ----------------------------- Readers -----------------------------------
-
+# ============================= Read (Telemetry) ============================
 class Read:
     """
-    Subscribe to both /joint_trajectory and /motor_settings.
-    Your callback receives a merged dict per motor update:
+    Listen to telemetry published by /motor_control:
+      - /joint_trajectory (trajectory_msgs/JointTrajectory)
+      - /motor_settings (datatypes/MotorSettings)
 
-        {
-          'motor_name': 'joint1',
-          'position': 1234,            # from JointTrajectory (if available)
-          'position_deg': 12.34,       # convenience
-          'velocity': 100, ...         # from MotorSettings (if provided)
-        }
-
-    Diagnostics: set debug=True to get verbose logs as messages arrive.
+    Emits merged per-motor dicts to your callback.
     """
 
     def __init__(
@@ -381,9 +480,7 @@ class Read:
         host: str = "localhost",
         port: int = 9090,
         jt_topic_name: str = "/joint_trajectory",
-        jt_message_type: str = "trajectory_msgs/JointTrajectory",
         ms_topic_name: str = "/motor_settings",
-        ms_message_type: str = "datatypes/MotorSettings",
         debug: bool = False,
     ):
         if debug:
@@ -392,27 +489,24 @@ class Read:
         self._cb = callback
         self._cache: Dict[str, Dict[str, Any]] = {}
 
-        # Connect
         self.ros = roslibpy.Ros(host=host, port=port)
         self.ros.run()
+        _wait_connected(self.ros)
 
-        # Topics
-        self._jt = roslibpy.Topic(self.ros, jt_topic_name, jt_message_type)
-        self._ms = roslibpy.Topic(self.ros, ms_topic_name, ms_message_type)
+        self._jt = roslibpy.Topic(self.ros, jt_topic_name, "trajectory_msgs/JointTrajectory")
+        self._ms = roslibpy.Topic(self.ros, ms_topic_name, "datatypes/MotorSettings")
 
-        # Subscriptions
         self._jt.subscribe(self._on_jt)
         self._ms.subscribe(self._on_ms)
 
-        log.debug("Read subscribed to %s and %s", jt_topic_name, ms_topic_name)
-
-    # ---- internal handlers ----
-
     def _emit(self, motor_name: str) -> None:
         data = dict(self._cache.get(motor_name, {}))
-        if "position" in data:
-            data["position_deg"] = _internal_to_deg(data.get("position"))
-        log.debug("Emit merged update: %s", data)
+        # expose `position_deg` if we have internal units cached
+        if "position_internal" in data:
+            try:
+                data["position_deg"] = float(data["position_internal"]) / 100.0
+            except Exception:
+                pass
         self._cb(data)
 
     def _on_jt(self, msg: Dict[str, Any]) -> None:
@@ -420,15 +514,19 @@ class Read:
         points = msg.get("points") or []
         if not names or not points:
             return
-        motor_name = names[0]
         positions = points[0].get("positions") or []
         if not positions:
             return
-        pos = int(positions[0])
-
-        entry = self._cache.setdefault(motor_name, {"motor_name": motor_name})
-        entry["position"] = pos
-        self._emit(motor_name)
+        try:
+            pos_list = [int(round(float(p))) for p in positions]
+        except Exception:
+            return
+        for idx, motor_name in enumerate(names):
+            if idx >= len(pos_list):
+                break
+            entry = self._cache.setdefault(motor_name, {"motor_name": motor_name})
+            entry["position_internal"] = pos_list[idx]
+            self._emit(motor_name)
 
     def _on_ms(self, msg: Dict[str, Any]) -> None:
         motor_name = msg.get("motor_name")
@@ -437,97 +535,48 @@ class Read:
         entry = self._cache.setdefault(motor_name, {"motor_name": motor_name})
         for k, v in msg.items():
             if k in ("motor_name", "position"):
-                continue  # ignore 'position' here; position comes from JointTrajectory
+                continue
             entry[k] = v
         self._emit(motor_name)
 
     def close(self) -> None:
-        try:
-            self._jt.unsubscribe(self._on_jt)
-        except Exception:
-            pass
-        try:
-            self._ms.unsubscribe(self._on_ms)
-        except Exception:
-            pass
+        for (topic, cb) in ((self._jt, self._on_jt), (self._ms, self._on_ms)):
+            try:
+                topic.unsubscribe(cb)
+            except Exception:
+                pass
         try:
             self.ros.close()
         except Exception:
             pass
 
-
-def read_stream(
-    callback: Callable[[Dict[str, Any]], None],
-    *,
-    host: str = "localhost",
-    port: int = 9090,
-    debug: bool = False,
-) -> Read:
-    """
-    Continuous merged stream from /joint_trajectory + /motor_settings.
-    """
-    return Read(callback, host=host, port=port, debug=debug)
-
-
-def read(
-    motor_name: str,
-    *,
-    host: str = "localhost",
-    port: int = 9090,
-    timeout: float = 3.0,
-    debug: bool = False,
-) -> Dict[str, Any]:
-    """
-    One-shot blocking read: waits for either a JointTrajectory or MotorSettings
-    update for the given motor and returns the latest merged view (within timeout).
-    """
-    if debug:
-        log.setLevel(logging.DEBUG)
-
-    result: Dict[str, Any] = {}
-    evt = threading.Event()
-
-    def _cb(data: Dict[str, Any]) -> None:
-        if data.get("motor_name") == motor_name:
-            result.clear()
-            result.update(data)
-            evt.set()
-
-    r = Read(_cb, host=host, port=port, debug=debug)
-    ok = evt.wait(timeout)
-    r.close()
-
-    if not ok:
-        raise TimeoutError(f"No update for '{motor_name}' within {timeout} seconds")
-    return result
-
-
-# ----------------------------- CLI / Demos --------------------------------
-
-def _cli_check(args: argparse.Namespace) -> int:
-    w = Write(host=args.host, port=args.port, debug=args.debug)
-    try:
-        w.health_check(timeout=args.timeout)
-        return 0
-    finally:
-        w.close()
-
+# ============================= CLI ========================================
 
 def _cli_send(args: argparse.Namespace) -> int:
     w = Write(host=args.host, port=args.port, debug=args.debug)
     try:
-        if args.ack:
-            ok = w.send_with_ack(
-                args.motor,
-                position_deg=args.position_deg,
-                ack_timeout=args.timeout,
-                observe_ms=args.observe_ms,
+        # Settings path
+        if args.turn_on or args.set_defaults or any(
+            a is not None for a in (args.velocity, args.acceleration, args.deceleration, args.period)
+        ):
+            specs: List[Union[str, _Token]] = [args.motor]
+            kwargs: Dict[str, Any] = dict(
+                turned_on=True if args.turn_on or args.set_defaults else None,
+                pulse_width_min=700 if args.set_defaults else None,
+                pulse_width_max=2500 if args.set_defaults else None,
+                rotation_range_min=-9000 if args.set_defaults else None,
+                rotation_range_max=9000 if args.set_defaults else None,
+                velocity=args.velocity,
+                acceleration=args.acceleration,
+                deceleration=args.deceleration,
+                period=args.period,
             )
-            print("ACK:", "OK" if ok else "TIMEOUT")
-            return 0 if ok else 2
-        else:
-            w.send(args.motor, position_deg=args.position_deg)
-            return 0
+            w.set(*specs, verify_echo=args.verify_echo, echo_timeout=args.echo_timeout, **kwargs)
+        # Move path
+        if args.position_deg is not None:
+            ok = w.move(args.motor, args.position_deg)
+            print("Move:", "OK" if ok else "FAILED")
+        return 0
     finally:
         w.close()
 
@@ -539,7 +588,7 @@ def _cli_echo(args: argparse.Namespace) -> int:
     r = Read(_cb, host=args.host, port=args.port, debug=args.debug)
     try:
         while True:
-            time.sleep(0.2)
+            time.sleep(0.01)
     except KeyboardInterrupt:
         pass
     finally:
@@ -548,29 +597,29 @@ def _cli_echo(args: argparse.Namespace) -> int:
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description="pib control SDK over rosbridge")
+    p = argparse.ArgumentParser(description="pib control over rosbridge (service-based)")
     p.add_argument("--host", default="localhost")
     p.add_argument("--port", type=int, default=9090)
-    p.add_argument("--debug", action="store_true", help="enable verbose logging")
+    p.add_argument("--debug", action="store_true")
 
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    p_check = sub.add_parser("check", help="verify connection & topics via rosapi")
-    p_check.add_argument("--timeout", type=float, default=3.0)
-    p_check.set_defaults(func=_cli_check)
-
-    p_send = sub.add_parser("send", help="send a single position (deg)")
-    p_send.add_argument("--motor", required=True, help="motor/joint name")
-    p_send.add_argument("--position-deg", type=float, required=False, default=None)
-    p_send.add_argument("--ack", action="store_true", help="wait to observe echo on the bus")
-    p_send.add_argument("--observe-ms", action="store_true", help="also wait for /motor_settings echo")
-    p_send.add_argument("--timeout", type=float, default=2.5)
+    p_send = sub.add_parser("send", help="apply settings and/or send a move (services)")
+    p_send.add_argument("--motor", required=True)
+    p_send.add_argument("--position-deg", dest="position_deg", type=float, default=None)
+    p_send.add_argument("--turn-on", action="store_true", help="turn on motor")
+    p_send.add_argument("--set-defaults", action="store_true", help="apply common limits/ranges")
+    p_send.add_argument("--velocity", type=int, default=None)
+    p_send.add_argument("--acceleration", type=int, default=None)
+    p_send.add_argument("--deceleration", type=int, default=None)
+    p_send.add_argument("--period", type=int, default=None)
+    p_send.add_argument("--verify-echo", action="store_true", help="confirm via /motor_settings telemetry")
+    p_send.add_argument("--echo-timeout", type=float, default=1.0)
     p_send.set_defaults(func=_cli_send)
 
-    p_echo = sub.add_parser("echo", help="print merged messages")
-    p_echo.add_argument("--motor", required=False, help="filter by motor name")
+    p_echo = sub.add_parser("echo", help="print merged telemetry")
+    p_echo.add_argument("--motor", required=False)
     p_echo.set_defaults(func=_cli_echo)
-
     return p
 
 
