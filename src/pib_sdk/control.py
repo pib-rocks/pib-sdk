@@ -31,7 +31,7 @@ class _Token:
 All                 = _Token("All")
 default             = _Token("default")
 open_left_hand      = _Token("open_left_hand")
-close_right_hand     = _Token("close_left_hand")
+close_left_hand     = _Token("close_left_hand")
 open_right_hand     = _Token("open_right_hand")
 close_right_hand    = _Token("close_right_hand")
 resting_position    = _Token("resting_position")
@@ -190,9 +190,9 @@ class Write:
                     if not all_motors:
                         raise ValueError("No motors known yet. Ensure DB is present or publish /motor_settings once.")
                     names.extend(all_motors)
-                elif s in (open_hand_left, close_hand_left, open_hand_right, close_hand_right):
+                elif s in (open_left_hand, close_left_hand, open_right_hand, close_right_hand):
                     # Expand to the proper finger group
-                    fingers = [m for m in all_motors if self._is_finger(m) and ((self._is_left(m) and s in (open_hand_left, close_hand_left)) or (self._is_right(m) and s in (open_hand_right, close_hand_right)))]
+                    fingers = [m for m in all_motors if self._is_finger(m) and ((self._is_left(m) and s in (open_left_hand, close_right_hand)) or (self._is_right(m) and s in (open_right_hand, close_left_hand)))]
                     if not fingers:
                         log.warning("No finger motors matched for token %s", s)
                     names.extend(fingers)
@@ -357,10 +357,10 @@ class Write:
           - w.move(All, -90.0)
           - w.move(All, zero_position)
           - w.move(All, resting_position)
-          - w.move(open_hand_left)        # -90 for left fingers
-          - w.move(close_hand_left)       # +90 for left fingers
-          - w.move(open_hand_right)
-          - w.move(close_hand_right)
+          - w.move(open_left_hand)        # -90 for left fingers
+          - w.move(close_left_hand)       # +90 for left fingers
+          - w.move(open_right_hand)
+          - w.move(close_right_hand)
           - w.move(right_arm, -30.0)      # everything ending with _right, except *_stretch and *thumb*opposition*
           - w.move(left_arm, -30.0)
           - w.move("a", "b", "c", -45.0, 10.0, 5.0)  # per-motor angles
@@ -384,10 +384,10 @@ class Write:
         # Special single-token hand/open/close cases without explicit numbers
         if len(specs) == 1 and isinstance(specs[0], _Token) and not numbers:
             tok = specs[0]
-            if tok in (open_hand_left, open_hand_right):
+            if tok in (open_left_hand, open_right_hand):
                 specs = [tok]
                 numbers = [-90.0]
-            elif tok in (close_hand_left, close_hand_right):
+            elif tok in (close_left_hand, close_right_hand):
                 specs = [tok]
                 numbers = [90.0]
             elif tok is resting_position:
@@ -416,8 +416,8 @@ class Write:
             raise ValueError("No motors resolved from specifications")
 
         # If token includes open/close hand alongside names and no numbers, broadcast defaults
-        if any(isinstance(s, _Token) and s in (open_hand_left, open_hand_right, close_hand_left, close_hand_right) for s in specs) and not numbers:
-            if any(isinstance(s, _Token) and s in (open_hand_left, open_hand_right) for s in specs):
+        if any(isinstance(s, _Token) and s in (open_left_hand, open_right_hand, close_left_hand, close_right_hand) for s in specs) and not numbers:
+            if any(isinstance(s, _Token) and s in (open_left_hand, open_right_hand) for s in specs):
                 numbers = [-90.0]
             else:
                 numbers = [90.0]
