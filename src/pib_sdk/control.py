@@ -30,10 +30,10 @@ class _Token:
 # Group/action tokens (usable without quotes)
 All                 = _Token("All")
 default             = _Token("default")
-open_hand_left      = _Token("open_hand_left")
-close_hand_left     = _Token("close_hand_left")
-open_hand_right     = _Token("open_hand_right")
-close_hand_right    = _Token("close_hand_right")
+open_left_hand      = _Token("open_left_hand")
+close_right_hand     = _Token("close_left_hand")
+open_right_hand     = _Token("open_right_hand")
+close_right_hand    = _Token("close_right_hand")
 resting_position    = _Token("resting_position")
 # Accept common misspellings
 resting_postion     = resting_position
@@ -44,6 +44,11 @@ right_arm           = _Token("right_arm")
 arm_right           = right_arm  # alias
 left_arm            = _Token("left_arm")
 arm_left            = left_arm   # alias
+# Hand grouping tokens
+left_hand           = _Token("left_hand")
+right_hand          = _Token("right_hand")
+
+
 
 # ============================= Helpers =====================================
 def _wait_connected(ros: roslibpy.Ros, timeout: float = 5.0) -> None:
@@ -191,6 +196,20 @@ class Write:
                     if not fingers:
                         log.warning("No finger motors matched for token %s", s)
                     names.extend(fingers)
+                elif s is left_hand:
+                    members = [m for m in all_motors if self._is_finger(m) and self._is_left(m)]
+                    members += [m for m in all_motors if "thumb" in m and "opposition" in m and self._is_left(m)]
+                    if not members:
+                        log.warning("No left-hand motors matched.")
+                    names.extend(members)
+
+                elif s is right_hand:
+                    members = [m for m in all_motors if self._is_finger(m) and self._is_right(m)]
+                    members += [m for m in all_motors if "thumb" in m and "opposition" in m and self._is_right(m)]
+                    if not members:
+                        log.warning("No right-hand motors matched.")
+                    names.extend(members)
+
                 elif s in (right_arm, arm_right):
                     members = ["shoulder_vertical_right", "shoulder_horizontal_right", "upper_arm_right_rotation", "elbow_right", "lower_arm_right_rotation", "wrist_right"]
                     if not members:
