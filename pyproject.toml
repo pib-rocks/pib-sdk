@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pib-sdk"
-version = "0.1"
+version = "0.2"
 description = "Forward & inverse kinematics helpers for pib's robot arms"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -16,9 +16,12 @@ authors = [
 
 dependencies = [
   "roboticstoolbox-python==1.1.0",
-  "numpy<2",
+  "numpy==1.26.4",
   "spatialmath-python",
   "roslibpy"
+  "opencv-python==4.11.0.86",
+  "depthai==2.30",
+
 ]
 
 classifiers = [
@@ -26,6 +29,9 @@ classifiers = [
   "License :: OSI Approved :: MIT License",
   "Operating System :: OS Independent"
 ]
+
+[project.scripts]
+pib = "pib_sdk.cli:main"
 
 [project.optional-dependencies]
 dev = ["pytest", "ruff", "build", "twine"]
