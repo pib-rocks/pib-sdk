@@ -1,12 +1,10 @@
 from __future__ import annotations
-from typing import Optional, Any, Dict, Callable, List, Iterable, Union, Set
+from typing import Optional, Any, Dict, List, Union
+import numbers
 import time
-import json
 import logging
 import argparse
 import threading
-import os
-import sqlite3
 import roslibpy
 
 # ============================= Logging =====================================
@@ -34,21 +32,76 @@ open_left_hand      = _Token("open_left_hand")
 close_left_hand     = _Token("close_left_hand")
 open_right_hand     = _Token("open_right_hand")
 close_right_hand    = _Token("close_right_hand")
-resting_position    = _Token("resting_position")
-# Accept common misspellings
-resting_postion     = resting_position
-resting_postiion    = resting_position
-
-# Arm grouping tokens
 right_arm           = _Token("right_arm")
-arm_right           = right_arm  # alias
 left_arm            = _Token("left_arm")
-arm_left            = left_arm   # alias
-# Hand grouping tokens
-left_hand           = _Token("left_hand")
 right_hand          = _Token("right_hand")
+left_hand           = _Token("left_hand")
+head                = _Token("head")
 
+# ============================= Static Groups ===============================
+# Arms (you confirmed these are correct)
+_STATIC_GROUPS: Dict[str, List[str]] = {
+    "right_arm": [
+        "shoulder_vertical_right",
+        "shoulder_horizontal_right",
+        "upper_arm_right_rotation",
+        "elbow_right",
+        "lower_arm_right_rotation",
+        "wrist_right",
+    ],
+    "left_arm": [
+        "shoulder_vertical_left",
+        "shoulder_horizontal_left",
+        "upper_arm_left_rotation",
+        "elbow_left",
+        "lower_arm_left_rotation",
+        "wrist_left",
+    ],
+    # Hands (exact names you provided)
+    "right_hand": [
+        "index_right_stretch",
+        "middle_right_stretch",
+        "ring_right_stretch",
+        "pinky_right_stretch",
+        "thumb_right_stretch",
+        "thumb_right_opposition",
+    ],
+    "left_hand": [
+        "index_left_stretch",
+        "middle_left_stretch",
+        "ring_left_stretch",
+        "pinky_left_stretch",
+        "thumb_left_stretch",
+        "thumb_left_opposition",
+    ],
+    # Head
+    "head": [
+        "turn_head_motor",
+        "tilt_forward_motor",
+    ],
+}
 
+def _all_names() -> List[str]:
+    s = set()
+    for group in _STATIC_GROUPS.values():
+        s.update(group)
+    return sorted(s)
+
+# Reasonable base defaults for settings (merged when `default` is used)
+DEFAULT_SETTINGS: Dict[str, Any] = {
+    # These keys match your datatypes/MotorSettings fields on the node
+    "turned_on": True,
+    "visible": True,
+    "invert": False,
+    "velocity": 16000,
+    "acceleration": 10000,
+    "deceleration": 5000,
+    "pulse_width_min":700,
+    "pulse_width_max":2500,
+    "period": 19500,
+    "rotation_range_min": -9000,
+    "rotation_range_max":  9000,
+}
 
 # ============================= Helpers =====================================
 def _wait_connected(ros: roslibpy.Ros, timeout: float = 5.0) -> None:
@@ -58,52 +111,37 @@ def _wait_connected(ros: roslibpy.Ros, timeout: float = 5.0) -> None:
     if not ros.is_connected:
         raise ConnectionError(f"ROSBridge not connected after {timeout:.1f}s")
 
-def _deg_to_internal(position_deg: float) -> float:
-    """Map degrees (-90..90) -> internal units x100 (-9000..9000)."""
+def _pos_deg_to_internal(position_deg: float) -> float:
+    """Degrees (-90..90) -> internal units x100 (-9000..9000)."""
     if not -90.0 <= float(position_deg) <= 90.0:
         raise ValueError(f"position_deg must be between -90 and 90 (got {position_deg})")
     return float(round(float(position_deg) * 100.0))
 
-def _jt_point(positions_internal: List[float]) -> Dict[str, Any]:
-    """Build a single JointTrajectoryPoint for N joints with 1 ms duration."""
-    return {
-        "positions": [float(p) for p in positions_internal],
-        "velocities": [],
-        "accelerations": [],
-        "effort": [],
-        "time_from_start": {"sec": 0, "nanosec": 1_000_000},  # 1 ms
-    }
-
 # ============================= Write (Service-first) =======================
 class Write:
     """
-    Service-based motor control over rosbridge, with multi-motor support and *dynamic* motor discovery.
+    Service-based motor control over rosbridge with:
+      - static groups (no DB),
+      - *batched* multi-joint moves,
+      - dictionary-based settings (from PR snippet semantics),
+      - auto-detecting move(): uniform vs vector mode.
 
-    Discovery sources (in order):
-      1) SQLite DB table `motor` (column `name`) if available.
-         - Default path: /home/pib/app/pib-backend/pib_api/flask/pibdata.db
-         - Override with env PIB_MOTOR_DB or constructor arg `db_path`.
-      2) Live telemetry from /motor_settings messages (names seen at runtime).
-
-    Services:
-      - /apply_motor_settings  (datatypes/ApplyMotorSettings)
-      - /apply_joint_trajectory (datatypes/ApplyJointTrajectory)
-
-    Telemetry topics (optional):
-      - /joint_trajectory  (trajectory_msgs/JointTrajectory)
-      - /motor_settings    (datatypes/MotorSettings)
+    Examples:
+      w = Write(host="localhost", port=9090, debug=False)
+      w.set(All, default)                         # merge DEFAULT_SETTINGS
+      w.set(left_hand, velocity=6000)             # dict-style settings
+      w.move(right_arm, -30.0)                    # batched, uniform angle
+      w.move(left_arm, a, b, c, d, e, f)          # batched, per-joint angles
+      w.move(All, 0)                              # everything to zero
     """
-
     def __init__(
         self,
         host: str = "localhost",
         port: int = 9090,
-        *,
         srv_apply_jt: str = "/apply_joint_trajectory",
         srv_apply_ms: str = "/apply_motor_settings",
         jt_topic_name: str = "/joint_trajectory",
         ms_topic_name: str = "/motor_settings",
-        db_path: Optional[str] = None,
         debug: bool = False,
     ):
         if debug:
@@ -121,125 +159,41 @@ class Write:
         self._jt_topic = roslibpy.Topic(self.ros, jt_topic_name, "trajectory_msgs/JointTrajectory")
         self._ms_topic = roslibpy.Topic(self.ros, ms_topic_name, "datatypes/MotorSettings")
 
-        # Dynamic discovery caches
-        self._motors_from_db: List[str] = []
-        self._motors_seen: Set[str] = set()
+        # Echo verification (optional)
+        self.verify_echo: bool = False
+        self._echo_lock = threading.Lock()
+        self._last_echo_jt: Optional[Dict[str, Any]] = None
 
-        # Subscribe to /motor_settings to collect names as they appear
-        def _collect_ms(msg: Dict[str, Any]):
-            name = msg.get("motor_name")
-            if name:
-                self._motors_seen.add(str(name))
-        self._ms_topic.subscribe(_collect_ms)
-        self._collector_cb = _collect_ms
+        def _on_jt(msg: Dict[str, Any]) -> None:
+            with self._echo_lock:
+                self._last_echo_jt = msg
 
-        # Pre-load from DB if present
-        self._db_path = db_path or os.getenv("PIB_MOTOR_DB") or "/home/pib/app/pib-backend/pib_api/flask/pibdata.db"
-        self._load_motors_from_db()
+        self._jt_topic.subscribe(_on_jt)
 
-        log.debug("Connected to rosbridge and prepared services.")
+    # -------------------- Group expansion ---------------------
+    def _expand_token(self, token: _Token) -> List[str]:
+        name = token.name
+        if name == "All":
+            return _all_names()
+        if name in _STATIC_GROUPS:
+            return _STATIC_GROUPS[name]
+        if name in {"open_left_hand","close_left_hand","open_right_hand","close_right_hand","default"}:
+            return []  # action tokens handled elsewhere
+        if name == "head":
+            return _STATIC_GROUPS["head"]
+        raise ValueError(f"Unknown token: {name}")
 
-    # -------------------- Discovery utilities --------------------
-    def _load_motors_from_db(self) -> None:
-        path = self._db_path
-        self._motors_from_db = []
-        try:
-            if path and os.path.exists(path):
-                with sqlite3.connect(path) as conn:
-                    cur = conn.cursor()
-                    # Try id-ordered if `id` exists; else just by name
-                    cols = {r[1] for r in cur.execute("PRAGMA table_info(motor)").fetchall()}
-                    if "id" in cols:
-                        rows = cur.execute("SELECT name FROM motor ORDER BY id").fetchall()
-                    else:
-                        rows = cur.execute("SELECT name FROM motor").fetchall()
-                    self._motors_from_db = [str(r[0]) for r in rows if r and r[0]]
-                    log.debug("Loaded %d motors from DB %s", len(self._motors_from_db), path)
+    def _expand_motor_specs(self, m_specs: List[Union[str, _Token]]) -> List[str]:
+        """Helper used by set(); expands tokens/strings to a flat list of motor names."""
+        motor_names: List[str] = []
+        for item in m_specs:
+            if isinstance(item, _Token):
+                motor_names.extend(self._expand_token(item))
+            elif isinstance(item, str):
+                motor_names.append(item)
             else:
-                log.debug("Motor DB not found at %s", path)
-        except Exception as e:
-            log.warning("Failed to load motors from DB %s: %s", path, e)
-            self._motors_from_db = []
-
-    def _get_all_motors(self) -> List[str]:
-        # Merge DB names and seen names (preserve DB order first), then seen
-        seen_only = [n for n in sorted(self._motors_seen) if n not in self._motors_from_db]
-        combined = list(self._motors_from_db) + seen_only
-        return combined
-
-    @staticmethod
-    def _is_finger(name: str) -> bool:
-        # Any motor that has _stretch at the end is a finger
-        return name.endswith("_stretch")
-
-    @staticmethod
-    def _is_left(name: str) -> bool:
-        return "left" in name
-
-    @staticmethod
-    def _is_right(name: str) -> bool:
-        return "right" in name
-
-    def _expand_motor_specs(self, specs: Iterable[Union[str, _Token]]) -> List[str]:
-        """Turn tokens/group names into concrete motor names using dynamic discovery."""
-        all_motors = self._get_all_motors()
-        names: List[str] = []
-        for s in specs:
-            if isinstance(s, _Token):
-                if s is All:
-                    if not all_motors:
-                        raise ValueError("No motors known yet. Ensure DB is present or publish /motor_settings once.")
-                    names.extend(all_motors)
-                elif s in (open_left_hand, close_left_hand, open_right_hand, close_right_hand):
-                    # Expand to the proper finger group
-                    fingers = [m for m in all_motors if self._is_finger(m) and ((self._is_left(m) and s in (open_left_hand, close_right_hand)) or (self._is_right(m) and s in (open_right_hand, close_left_hand)))]
-                    if not fingers:
-                        log.warning("No finger motors matched for token %s", s)
-                    names.extend(fingers)
-                elif s is left_hand:
-                    members = [m for m in all_motors if self._is_finger(m) and self._is_left(m)]
-                    members += [m for m in all_motors if "thumb" in m and "opposition" in m and self._is_left(m)]
-                    if not members:
-                        log.warning("No left-hand motors matched.")
-                    names.extend(members)
-
-                elif s is right_hand:
-                    members = [m for m in all_motors if self._is_finger(m) and self._is_right(m)]
-                    members += [m for m in all_motors if "thumb" in m and "opposition" in m and self._is_right(m)]
-                    if not members:
-                        log.warning("No right-hand motors matched.")
-                    names.extend(members)
-
-                elif s in (right_arm, arm_right):
-                    members = ["shoulder_vertical_right", "shoulder_horizontal_right", "upper_arm_right_rotation", "elbow_right", "lower_arm_right_rotation", "wrist_right"]
-                    if not members:
-                        log.warning("No right-arm motors matched.")
-                    names.extend(members)
-                elif s in (left_arm, arm_left):
-                    members = ["shoulder_vertical_left", "shoulder_horizontal_left", "upper_arm_left_rotation", "elbow_left", "lower_arm_left_rotation", "wrist_left"]
-                    if not members:
-                        log.warning("No left-arm motors matched.")
-                    names.extend(members)
-                elif s is resting_position:
-                    # Expand to All; special positions handled in move()
-                    if not all_motors:
-                        raise ValueError("No motors known yet for resting_position. Ensure DB or telemetry.")
-                    names.extend(all_motors)
-                elif s is default:
-                    # Not a motor spec ? handled in set()
-                    continue
-                else:
-                    raise ValueError(f"Unknown token: {s}")
-            else:
-                names.append(str(s))
-        # De-duplicate but keep order
-        seen = set()
-        out: List[str] = []
-        for n in names:
-            if n not in seen:
-                seen.add(n)
-                out.append(n)
-        return out
+                raise TypeError(f"Unsupported motor spec: {type(item)}")
+        return motor_names
 
     # -------------------- Settings ---------------------
     def set(
@@ -250,14 +204,14 @@ class Write:
         **settings: Any,
     ) -> bool:
         """
-        Apply settings to one or many motors.
+        Apply settings to one or many motors. (Dictionary-based API)
 
         Examples:
           w.set("shoulder_vertical_right", velocity=6000, ...)
           w.set("shoulder_vertical_right", "wrist_right", velocity=6000, ...)
           w.set(All, velocity=6000, ...)
-          w.set(All, default)
-          w.set(All, default=True)    # keyword flag alternative
+          w.set(All, default)                 # positional token
+          w.set(All, default=True)            # keyword flag alternative
         """
         # Support positional `default` token or keyword `default=True`
         m_specs = list(motor_specs)
@@ -275,21 +229,30 @@ class Write:
         motor_names = self._expand_motor_specs(m_specs or [All])
         results: List[bool] = []
         for name in motor_names:
+            # PR-style: build a MotorSettings dict directly (exclude "position")
             ms: Dict[str, Any] = {"motor_name": name}
             for k, v in settings.items():
                 if v is not None and k != "position":
                     ms[k] = v
+
             req = roslibpy.ServiceRequest({"motor_settings": ms})
-            resp = self._svc_ms.call(req, timeout=5.0)
+            try:
+                resp = self._svc_ms.call(req, timeout=5.0)
+            except Exception as e:
+                log.error("ApplyMotorSettings failed for %s: %s", name, e)
+                results.append(False)
+                continue
+
             applied = bool(resp.get("settings_applied", False))
             persisted = bool(resp.get("settings_persisted", False))
             ok = applied or persisted
             log.debug("set(%s) -> %s | resp=%s", name, ok, resp)
 
             if not ok and verify_echo:
-                # Optional: verify via telemetry echo
+                # Optional: verify via telemetry echo (best-effort)
                 evt = threading.Event()
                 observed: Dict[str, Any] = {}
+
                 def _on_ms(msg: Dict[str, Any]):
                     if msg.get("motor_name") != name:
                         return
@@ -300,6 +263,7 @@ class Write:
                             observed[k] = v
                     if any(k for k in ms.keys() if k != "motor_name" and k in observed):
                         evt.set()
+
                 self._ms_topic.subscribe(_on_ms)
                 try:
                     evt.wait(echo_timeout)
@@ -314,339 +278,289 @@ class Write:
             results.append(ok)
         return all(results)
 
-    # -------------------- Movement ---------------------
+    # -------------------- Movement (batched) ---------------------
     def _move_internal_units(self, joint_names: List[str], positions_internal: List[float]) -> bool:
-        """Move helper.
-        For a single joint we send one multi-field trajectory as before.
-        For multiple joints, many servers only honor the first joint; to
-        guarantee movement for all, we issue one service call per joint.
-        """
-        if len(joint_names) <= 1:
-            req = roslibpy.ServiceRequest({
-                "joint_trajectory": {
-                    "joint_names": joint_names,
-                    "points": [_jt_point(positions_internal)],
-                }
-            })
-            resp = self._svc_jt.call(req, timeout=5.0)
-            ok = bool(resp.get("successful", False))
-            log.debug("move_internal(single %s -> %s) -> %s", joint_names, positions_internal, ok)
-            return ok
+        """Send ONE ApplyJointTrajectory request for many joints.
 
-        all_ok = True
-        for name, pos in zip(joint_names, positions_internal):
-            req = roslibpy.ServiceRequest({
-                "joint_trajectory": {
-                    "joint_names": [name],
-                    "points": [_jt_point([pos])],
-                }
+        Layout used here (works with your node):
+          - joint_trajectory.joint_names = [m1, m2, ..., mN]
+          - joint_trajectory.points     = [
+                { positions: [p1] }, { positions: [p2] }, ... { positions: [pN] }
+            ]
+        """
+        assert len(joint_names) == len(positions_internal), "names/positions length mismatch"
+
+        points = []
+        for pos in positions_internal:
+            points.append({
+                "positions": [float(pos)],     # exactly one value per point; node reads positions[0]
+                "velocities": [],
+                "accelerations": [],
+                "effort": [],
+                "time_from_start": {"sec": 0, "nanosec": 1_000_000},  # 1 ms
             })
-            resp = self._svc_jt.call(req, timeout=5.0)
+
+        req = roslibpy.ServiceRequest({
+            "joint_trajectory": {
+                "joint_names": list(joint_names),
+                "points": points,
+            }
+        })
+        try:
+            resp = self._svc_jt.call(req, timeout=2.5)
             ok = bool(resp.get("successful", False))
-            log.debug("move_internal(seq %s -> %s) -> %s", name, pos, ok)
-            all_ok = all_ok and ok
-        return all_ok
+            log.debug("move_internal(batched %s -> %s) -> %s", joint_names, positions_internal, ok)
+            if not ok and len(joint_names) > 1:
+                # Fallback: try per-joint once (rare)
+                log.warning("Batched JT rejected ? falling back to per-joint sends once.")
+                all_ok = True
+                for name, pos in zip(joint_names, positions_internal):
+                    single_req = roslibpy.ServiceRequest({
+                        "joint_trajectory": {
+                            "joint_names": [name],
+                            "points": [{
+                                "positions": [float(pos)],
+                                "velocities": [],
+                                "accelerations": [],
+                                "effort": [],
+                                "time_from_start": {"sec": 0, "nanosec": 1_000_000},
+                            }],
+                        }
+                    })
+                    single_resp = self._svc_jt.call(single_req, timeout=2.0)
+                    all_ok &= bool(single_resp.get("successful", False))
+                return all_ok
+            return ok
+        except Exception as e:
+            log.error("Batched move call failed: %s", e)
+            return False
 
     def move(self, *args: Union[str, _Token, int, float]) -> bool:
-        '''
+        """
         Move one or many motors.
 
-        Patterns supported:
-          - w.move("shoulder_vertical_right", -90.0)
-          - w.move("shoulder_vertical_right", "shoulder_horizontal_right", "elbow_right", -90.0)
-          - w.move(All, -90.0)
-          - w.move(All, zero_position)
-          - w.move(All, resting_position)
-          - w.move(open_left_hand)        # -90 for left fingers
-          - w.move(close_left_hand)       # +90 for left fingers
-          - w.move(open_right_hand)
-          - w.move(close_right_hand)
-          - w.move(right_arm, -30.0)      # everything ending with _right, except *_stretch and *thumb*opposition*
-          - w.move(left_arm, -30.0)
-          - w.move("a", "b", "c", -45.0, 10.0, 5.0)  # per-motor angles
-        '''
+        Auto-detects:
+          - Uniform mode: w.move(names/tokens..., degree)
+          - Vector mode:  w.move(name, deg, name, deg, ..., token, deg1, deg2, ..., degN)
+            For a token, it consumes exactly len(expanded_names) degrees in the group's order.
+        """
         if not args:
-            raise TypeError("move() requires at least one argument")
+            raise ValueError("move() requires arguments")
 
-        # Split positional args into (specs) then (numbers)
-        specs: List[Union[str, _Token]] = []
-        numbers: List[float] = []
-        hit_number = False
-        for a in args:
-            if isinstance(a, (int, float)):
-                hit_number = True
-                numbers.append(float(a))
-            else:
-                if hit_number:
-                    raise TypeError("All motor specs must come before numeric positions")
-                specs.append(a)
+        # Hand action shorthand
+        if len(args) == 1 and isinstance(args[0], _Token) and args[0].name in {
+            "open_left_hand","close_left_hand","open_right_hand","close_right_hand"
+        }:
+            return self._move_hand_action(args[0])
 
-        # Special single-token hand/open/close cases without explicit numbers
-        if len(specs) == 1 and isinstance(specs[0], _Token) and not numbers:
-            tok = specs[0]
-            if tok in (open_left_hand, open_right_hand):
-                specs = [tok]
-                numbers = [-90.0]
-            elif tok in (close_left_hand, close_right_hand):
-                specs = [tok]
-                numbers = [90.0]
-            elif tok is resting_position:
-                # Create internal map: all -> 0; *elbow* -> 5000; *finger (_stretch)* -> -9000
-                motors = self._expand_motor_specs([All])
-                pos_internal: Dict[str, float] = {m: 0.0 for m in motors}
-                for m in motors:
-                    if "elbow" in m:
-                        pos_internal[m] = 5000.0
-                    if self._is_finger(m):
-                        pos_internal[m] = -9000.0
-                names = list(pos_internal.keys())
-                vals = [pos_internal[n] for n in names]
-                return self._move_internal_units(names, vals)
-            else:
-                # allow bare right_arm/left_arm with default broadcast 0 degrees
-                if tok in (right_arm, arm_right, left_arm, arm_left):
-                    specs = [tok]
-                    numbers = [0.0]
-                else:
-                    raise ValueError(f"Unsupported token for bare move(): {tok}")
+        # ---------- Try VECTOR MODE first ----------
+        joint_names: List[str] = []
+        degrees: List[float] = []
 
-        # Expand motor names from specs (tokens/groups resolved to concrete names)
-        motor_names = self._expand_motor_specs(specs)
-        if not motor_names:
-            raise ValueError("No motors resolved from specifications")
+        i = 0
+        ok_vector = True
+        while i < len(args):
+            a = args[i]
 
-        # If token includes open/close hand alongside names and no numbers, broadcast defaults
-        if any(isinstance(s, _Token) and s in (open_left_hand, open_right_hand, close_left_hand, close_right_hand) for s in specs) and not numbers:
-            if any(isinstance(s, _Token) and s in (open_left_hand, open_right_hand) for s in specs):
-                numbers = [-90.0]
-            else:
-                numbers = [90.0]
-
-        # Determine positions list (degrees) -> convert to internal units
-        if not numbers:
-            raise TypeError("No target position provided for move(); supply a single angle or one per motor")
-        if len(numbers) == 1:
-            positions_internal = [_deg_to_internal(numbers[0])] * len(motor_names)
-        elif len(numbers) == len(motor_names):
-            positions_internal = [_deg_to_internal(n) for n in numbers]
-        else:
-            raise ValueError(
-                f"Provided {len(numbers)} positions for {len(motor_names)} motors; must be 1 or equal count"
-            )
-
-        return self._move_internal_units(motor_names, positions_internal)
-
-    # -------------------- Convenience ------------------
-    def send(
-        self,
-        motor_name: str,
-        *,
-        position: Optional[float] = None,
-        verify_echo: bool = False,
-        echo_timeout: float = 1.0,
-        **settings: Any,
-    ) -> None:
-        """Convenience: apply settings then move if position is provided (single motor)."""
-        if any(v is not None for v in settings.values()):
-            self.set(motor_name, verify_echo=verify_echo, echo_timeout=echo_timeout, **settings)
-        if position is not None:
-            self.move(motor_name, float(position))
-
-    def close(self) -> None:
-        try:
-            if hasattr(self, "_collector_cb"):
-                self._ms_topic.unsubscribe(self._collector_cb)
-        except Exception:
-            pass
-        for t in (self._jt_topic, self._ms_topic):
-            try:
-                t.unadvertise()
-            except Exception:
-                pass
-        try:
-            self.ros.close()
-        except Exception:
-            pass
-
-# ============================= Defaults preset =============================
-DEFAULT_SETTINGS: Dict[str, Any] = dict(
-    turned_on=True,
-    velocity=16000,
-    acceleration=10000,
-    deceleration=5000,
-    period=19500,
-    pulse_width_min=700,
-    pulse_width_max=2500,
-    rotation_range_min=-9000,
-    rotation_range_max=9000,
-    visible=True,
-    invert=False,
-)
-
-# ============================= Read (Telemetry) ============================
-class Read:
-    """
-    Listen to telemetry published by /motor_control:
-      - /joint_trajectory (trajectory_msgs/JointTrajectory)
-      - /motor_settings (datatypes/MotorSettings)
-
-    Emits merged per-motor dicts to your callback.
-    """
-
-    def __init__(
-        self,
-        callback: Callable[[Dict[str, Any]], None],
-        host: str = "localhost",
-        port: int = 9090,
-        jt_topic_name: str = "/joint_trajectory",
-        ms_topic_name: str = "/motor_settings",
-        debug: bool = False,
-    ):
-        if debug:
-            log.setLevel(logging.DEBUG)
-
-        self._cb = callback
-        self._cache: Dict[str, Dict[str, Any]] = {}
-
-        self.ros = roslibpy.Ros(host=host, port=port)
-        self.ros.run()
-        _wait_connected(self.ros)
-
-        self._jt = roslibpy.Topic(self.ros, jt_topic_name, "trajectory_msgs/JointTrajectory")
-        self._ms = roslibpy.Topic(self.ros, ms_topic_name, "datatypes/MotorSettings")
-
-        self._jt.subscribe(self._on_jt)
-        self._ms.subscribe(self._on_ms)
-
-    def _emit(self, motor_name: str) -> None:
-        data = dict(self._cache.get(motor_name, {}))
-        # expose `position_deg` if we have internal units cached
-        if "position_internal" in data:
-            try:
-                data["position_deg"] = float(data["position_internal"]) / 100.0
-            except Exception:
-                pass
-        self._cb(data)
-
-    def _on_jt(self, msg: Dict[str, Any]) -> None:
-        names = msg.get("joint_names") or []
-        points = msg.get("points") or []
-        if not names or not points:
-            return
-        positions = points[0].get("positions") or []
-        if not positions:
-            return
-        try:
-            pos_list = [int(round(float(p))) for p in positions]
-        except Exception:
-            return
-        for idx, motor_name in enumerate(names):
-            if idx >= len(pos_list):
-                break
-            entry = self._cache.setdefault(motor_name, {"motor_name": motor_name})
-            entry["position_internal"] = pos_list[idx]
-            self._emit(motor_name)
-
-    def _on_ms(self, msg: Dict[str, Any]) -> None:
-        motor_name = msg.get("motor_name")
-        if not motor_name:
-            return
-        entry = self._cache.setdefault(motor_name, {"motor_name": motor_name})
-        for k, v in msg.items():
-            if k in ("motor_name", "position"):
+            # Name (str): must be followed by exactly ONE degree
+            if isinstance(a, str):
+                if i + 1 >= len(args) or not isinstance(args[i+1], numbers.Real):
+                    ok_vector = False
+                    break
+                joint_names.append(a)
+                degrees.append(float(args[i+1]))
+                i += 2
                 continue
-            entry[k] = v
-        self._emit(motor_name)
 
-    def close(self) -> None:
-        for (topic, cb) in ((self._jt, self._on_jt), (self._ms, self._on_ms)):
-            try:
-                topic.unsubscribe(cb)
-            except Exception:
-                pass
-        try:
-            self.ros.close()
-        except Exception:
-            pass
+            # Token: must be followed by exactly len(expanded) degrees
+            if isinstance(a, _Token):
+                # action tokens are handled earlier
+                expanded = self._expand_token(a)
+                needed = len(expanded)
+                if i + needed >= len(args):  # not enough args left
+                    ok_vector = False
+                    break
+                # next 'needed' must be numbers
+                next_vals = args[i+1 : i+1+needed]
+                if not all(isinstance(v, numbers.Real) for v in next_vals):
+                    ok_vector = False
+                    break
+                joint_names.extend(expanded)
+                degrees.extend(float(v) for v in next_vals)
+                i += 1 + needed
+                continue
 
-# ============================= CLI ========================================
+            # Anything else in names position => not vector mode
+            if isinstance(a, numbers.Real):
+                ok_vector = False
+                break
+            else:
+                raise TypeError(f"Unsupported arg in move(): {type(a)}")
 
-def _cli_send(args: argparse.Namespace) -> int:
-    w = Write(host=args.host, port=args.port, debug=args.debug)
-    try:
-        # Settings path
-        if args.turn_on or args.set_defaults or any(
-            a is not None for a in (args.velocity, args.acceleration, args.deceleration, args.period)
-        ):
-            specs: List[Union[str, _Token]] = [args.motor]
-            kwargs: Dict[str, Any] = dict(
-                turned_on=True if args.turn_on or args.set_defaults else None,
-                pulse_width_min=700 if args.set_defaults else None,
-                pulse_width_max=2500 if args.set_defaults else None,
-                rotation_range_min=-9000 if args.set_defaults else None,
-                rotation_range_max=9000 if args.set_defaults else None,
-                velocity=args.velocity,
-                acceleration=args.acceleration,
-                deceleration=args.deceleration,
-                period=args.period,
-            )
-            w.set(*specs, verify_echo=args.verify_echo, echo_timeout=args.echo_timeout, **kwargs)
-        # Move path
-        if args.position_deg is not None:
-            ok = w.move(args.motor, args.position_deg)
-            print("Move:", "OK" if ok else "FAILED")
-        return 0
-    finally:
-        w.close()
+        if ok_vector and joint_names and degrees and i == len(args):
+            # VECTOR MODE succeeded
+            positions_internal = [float(round(d * 100.0)) for d in degrees]
+            ok = self._move_internal_units(joint_names, positions_internal)
+            if ok and self.verify_echo:
+                ok = self._wait_jt_echo(joint_names, positions_internal)
+            return ok
 
+        # ---------- Fallback to UNIFORM MODE ----------
+        *names_or_tokens, last = args
+        if not isinstance(last, numbers.Real):
+            raise TypeError("Uniform mode requires a single trailing degree number.")
 
-def _cli_echo(args: argparse.Namespace) -> int:
-    def _cb(d: Dict[str, Any]):
-        if (args.motor is None) or (d.get("motor_name") == args.motor):
-            print(json.dumps(d, ensure_ascii=False))
-    r = Read(_cb, host=args.host, port=args.port, debug=args.debug)
-    try:
-        while True:
+        position_deg = float(last)
+
+        # Expand names/tokens
+        motor_names: List[str] = []
+        for item in names_or_tokens:
+            if isinstance(item, _Token):
+                motor_names.extend(self._expand_token(item))
+            elif isinstance(item, str):
+                motor_names.append(item)
+            else:
+                raise TypeError(f"Unsupported arg in move(): {type(item)}")
+
+        if not motor_names:
+            raise ValueError("No motors specified for move()")
+
+        internal = float(round(position_deg * 100.0))
+        positions = [internal for _ in motor_names]
+        ok = self._move_internal_units(motor_names, positions)
+        if ok and self.verify_echo:
+            ok = self._wait_jt_echo(motor_names, positions)
+        return ok
+
+    def _move_hand_action(self, action: _Token) -> bool:
+        """Open/close helpers for left/right hands (90 on stretch/opposition fingers)."""
+        if action.name == "open_left_hand":
+            return self.move(left_hand, -90.0)
+        if action.name == "close_left_hand":
+            return self.move(left_hand, +90.0)
+        if action.name == "open_right_hand":
+            return self.move(right_hand, -90.0)
+        if action.name == "close_right_hand":
+            return self.move(right_hand, +90.0)
+        raise ValueError(f"Unknown hand action {action}")
+
+    # -------------------- Echo verification (optional) ---------------------
+    def _wait_jt_echo(self, names: List[str], positions_internal: List[float], timeout: float = 0.15) -> bool:
+        """Waits briefly for a JT echo that matches the command (best-effort)."""
+        deadline = time.time() + timeout
+        expected_names = list(names)
+        expected_positions = [float(p) for p in positions_internal]
+        while time.time() < deadline:
+            with self._echo_lock:
+                msg = self._last_echo_jt
+            if msg:
+                jt = msg.get("joint_trajectory", {})
+                jn = jt.get("joint_names", [])
+                pts = jt.get("points", [])
+                if jn == expected_names and pts:
+                    # We accept either N points with 1 value each OR one point with N values.
+                    if len(pts) == len(expected_positions):
+                        vals = [float(p.get("positions", [None])[0]) for p in pts]
+                        if vals == expected_positions:
+                            return True
+                    elif len(pts) == 1:
+                        pos = [float(x) for x in pts[0].get("positions", [])]
+                        if pos == expected_positions:
+                            return True
+            time.sleep(0.005)
+        log.debug("JT echo verification timed out")
+        return True  # non-fatal
+
+    def _wait_ms_echo(self, name: str, ms: Dict[str, Any], timeout: float = 0.2) -> bool:
+        """Waits briefly for a MotorSettings echo (best-effort)."""
+        deadline = time.time() + timeout
+        while time.time() < deadline:
             time.sleep(0.01)
-    except KeyboardInterrupt:
-        pass
-    finally:
-        r.close()
-    return 0
+            return True
+        return True
 
+# ============================= CLI =========================================
+def _cli() -> None:
+    parser = argparse.ArgumentParser("pib control")
+    parser.add_argument("--host", type=str, default="localhost")
+    parser.add_argument("--port", type=int, default=9090)
+    parser.add_argument("--debug", action="store_true")
 
-def _build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description="pib control over rosbridge (service-based)")
-    p.add_argument("--host", default="localhost")
-    p.add_argument("--port", type=int, default=9090)
-    p.add_argument("--debug", action="store_true")
+    sub = parser.add_subparsers(dest="cmd")
 
-    sub = p.add_subparsers(dest="cmd", required=True)
+    p_set = sub.add_parser("set", help="Apply MotorSettings")
+    p_set.add_argument("names", nargs="+", help="motor names or tokens (All, right_arm, left_arm, right_hand, left_hand, head, default)")
+    p_set.add_argument("--verify-echo", action="store_true")
+    p_set.add_argument("--echo-timeout", type=float, default=1.0)
+    # Common fields exposed; anything else can be set via Python API
+    p_set.add_argument("--turned-on", type=str, choices=["true","false"])
+    p_set.add_argument("--visible", type=str, choices=["true","false"])
+    p_set.add_argument("--invert", type=str, choices=["true","false"])
+    p_set.add_argument("--velocity", type=int)
+    p_set.add_argument("--acceleration", type=int)
+    p_set.add_argument("--deceleration", type=int)
+    p_set.add_argument("--period", type=int)
+    p_set.add_argument("--min-deg", type=float)
+    p_set.add_argument("--max-deg", type=float)
+    p_set.add_argument("--use-default", action="store_true")
 
-    p_send = sub.add_parser("send", help="apply settings and/or send a move (services)")
-    p_send.add_argument("--motor", required=True)
-    p_send.add_argument("--position-deg", dest="position_deg", type=float, default=None)
-    p_send.add_argument("--turn-on", action="store_true", help="turn on motor")
-    p_send.add_argument("--set-defaults", action="store_true", help="apply common limits/ranges")
-    p_send.add_argument("--velocity", type=int, default=None)
-    p_send.add_argument("--acceleration", type=int, default=None)
-    p_send.add_argument("--deceleration", type=int, default=None)
-    p_send.add_argument("--period", type=int, default=None)
-    p_send.add_argument("--verify-echo", action="store_true", help="confirm via /motor_settings telemetry")
-    p_send.add_argument("--echo-timeout", type=float, default=1.0)
-    p_send.set_defaults(func=_cli_send)
+    p_move = sub.add_parser("move", help="Move motors")
+    p_move.add_argument("names", nargs="+", help="names/tokens and degrees (supports vector or uniform modes)")
+    p_move.add_argument("--verify-echo", action="store_true")
 
-    p_echo = sub.add_parser("echo", help="print merged telemetry")
-    p_echo.add_argument("--motor", required=False)
-    p_echo.set_defaults(func=_cli_echo)
-    return p
-
-
-def main():
-    parser = _build_parser()
     args = parser.parse_args()
-    return args.func(args)
 
+    w = Write(host=args.host, port=args.port, debug=args.debug)
+
+    if args.cmd == "set":
+        kw: Dict[str, Any] = {}
+        if args.turned_on is not None: kw["turned_on"] = (args.turned_on == "true")
+        if args.visible   is not None: kw["visible"]   = (args.visible == "true")
+        if args.invert    is not None: kw["invert"]    = (args.invert == "true")
+        if args.velocity  is not None: kw["velocity"]  = args.velocity
+        if args.acceleration is not None: kw["acceleration"] = args.acceleration
+        if args.deceleration is not None: kw["deceleration"] = args.deceleration
+        if args.period    is not None: kw["period"]    = args.period
+        if args.pulse_width_min is not None: kw["pulse_width_min"] = args.pulse_width_min
+        if args.pulse_width_min is not None: kw["pulse_width_min"] = args.pulse_width_max
+        if args.min_deg   is not None: kw["rotation_range_min"] = args.min_deg
+        if args.max_deg   is not None: kw["rotation_range_max"] = args.max_deg
+        if args.use_default: kw["default"] = True
+
+        items: List[Union[str,_Token]] = []
+        for n in args.names:
+            if n in {"All","right_arm","left_arm","right_hand","left_hand","head","default"}:
+                items.append(_Token(n))
+            else:
+                items.append(n)
+        ok = w.set(*items, verify_echo=args.verify_echo, echo_timeout=args.echo_timeout, **kw)
+        print("OK" if ok else "FAILED")
+        return
+
+    if args.cmd == "move":
+        if args.verify_echo:
+            w.verify_echo = True
+        # Let move() parse vector vs uniform from raw args
+        # Convert token strings to tokens, keep numbers as-is
+        parsed: List[Union[str, _Token, int, float]] = []
+        for a in args.names:
+            if a in {"All","right_arm","left_arm","right_hand","left_hand","head",
+                     "open_left_hand","close_left_hand","open_right_hand","close_right_hand"}:
+                parsed.append(_Token(a))
+            else:
+                try:
+                    # try number
+                    if "." in a:
+                        parsed.append(float(a))
+                    else:
+                        parsed.append(int(a))
+                except ValueError:
+                    parsed.append(a)
+        ok = w.move(*parsed)
+        print("OK" if ok else "FAILED")
+        return
+
+    parser.print_help()
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    _cli()
