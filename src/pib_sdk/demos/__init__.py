@@ -19,7 +19,7 @@ _register(
 
 # NEW: color_follow (OAK-only)
 def _run_color_follow(kwargs: dict) -> int:
-    mod = import_module("pib_sdk.demos.color_follow.demo")
+    mod = import_module("pib_sdk.demos.color_follow.color_follow")
     return mod.main(kwargs)
 
 _register(
