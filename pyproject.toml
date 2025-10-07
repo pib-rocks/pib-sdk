@@ -18,9 +18,10 @@ dependencies = [
   "roboticstoolbox-python==1.1.0",
   "numpy==1.26.4",
   "spatialmath-python",
-  "roslibpy"
+  "roslibpy",
   "opencv-python==4.11.0.86",
   "depthai==2.30",
+  "mediapipe",
 
 ]
 
