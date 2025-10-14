@@ -68,8 +68,7 @@ w.move(left_arm,  15.0)
 
 ### Per-motor angles (one call)
 ```python
-w.move("shoulder_vertical_right", "shoulder_horizontal_right", "elbow_right",
-       -30.0, 10.0, 5.0)
+w.move("shoulder_vertical_right", -30.0, "shoulder_horizontal_right", 10.0, "elbow_right", 5.0)
 ```
 
 ---
@@ -140,26 +139,6 @@ print(pose)
 - IK defaults to **position-only** (RPY ignored); pass `rpy_deg=[roll, pitch, yaw]` to constrain orientation.
 - `ik(..., q0_deg=[...])` sets an initial guess (deg). Convergence settings: `tol`, `max_steps`, `custom_mask`.
 
----
-
-## Motor discovery & database
-
-`Write` builds the motor list from two sources:
-
-1. **SQLite DB** (optional): looks for table `motor(name)` in  
-   `/home/pib/app/pib-backend/pib_api/flask/pibdata.db`  
-   Override via:
-   - env var: `PIB_MOTOR_DB=/path/to/pibdata.db`, or
-   - constructor: `Write(db_path="/path/to/pibdata.db")`
-2. **Telemetry**: any name seen on `/motor_settings` is cached.
-
-You can inspect what’s known:
-
-```python
-print(w._get_all_motors())
-```
-
----
 
 ## CLI (optional)
 
@@ -223,4 +202,5 @@ w.set(All, default)
 # Apply custom velocity to two joints
 w.set("shoulder_vertical_right", "wrist_right", velocity=8000)
 ```
+
 
