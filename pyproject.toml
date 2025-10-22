@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "pib-sdk"
 version = "0.3"
-description = "Forward & inverse kinematics helpers for pib's robot arms"
+description = "sdk with helper classes and functions to control pib via rosbridge and solve kinematics"
 readme = "README.md"
 requires-python = "==3.9"
 license = {file = "LICENSE"}
