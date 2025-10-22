@@ -7,7 +7,7 @@ name = "pib-sdk"
 version = "0.3"
 description = "sdk with helper classes and functions to control pib via rosbridge and solve kinematics"
 readme = "README.md"
-requires-python = "==3.9"
+requires-python = ">=3.9,<3.12"
 license = {file = "LICENSE"}
 
 authors = [
