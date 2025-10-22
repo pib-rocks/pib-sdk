@@ -7,9 +7,12 @@ SDK for **pib** including forward, inverse kinematics and trajectory generatio
 * Multi point trajectory generation
 * Numeric **Jacobian** and analytical **pose error** utilities  
 * Zero ROS / Gazebo dependencies – pure Python ≥ 3.9
-* Writing joint values to ROS topic without ROS enbironment requirement  
+* Writing joint values to ROS topic without ROS environment requirement
+* Sending speech packets to voice assistant without ROS environment
+* Variety of demos utilizing all pib features  
 
 ## Installation
+requires-python>=3.9,<3.12
 ```
 pip install pib-sdk
 ```
@@ -25,19 +28,16 @@ Specify right or left to calculate for designated pib arm
 print('FK pose:', fk('right', [0,45,0,0,90,0]))
 print('IK angles:', ik('right', xyz=[150,0,350]))
 # To write or read values from joints
-write('shoulder_vertical_right', position=20, velocity=5000)
-read('shoulder_horizontal_left')
 ```
 
 
 ## Getting started
-
 ```python
 from pib_sdk.control import *
 from pib_sdk.kinematics import ik, fk
 
 # Control client
-w = Write(debug=True)  # connects to rosbridge (localhost:9090 by default)
+w = Write()  # connects to rosbridge (localhost:9090 by default)
 
 # Move a couple of joints with the same angle
 w.move("shoulder_vertical_right", "elbow_right", -30.0)
@@ -61,17 +61,22 @@ w.move(right_arm, -20.0)
 w.move(left_arm,  15.0)
 ```
 
-> **Naming rule recap**
->
-> - **Fingers**: name ends with `_stretch`  
-> - **Right/Left**: motor name ends with `_right` / `_left`  
-
 ### Per-motor angles (one call)
 ```python
 w.move("shoulder_vertical_right", -30.0, "shoulder_horizontal_right", 10.0, "elbow_right", 5.0)
 ```
+Clients are initiated with local host as default if between parenthisis is empty. To control a pib in the same network from your computer clients should be initiated like this
+```python
+w = Write(host="<ip_address>")  # Replace <ip_address> with the ip address of your pib
+sp = Speak(host="<ip_address>") 
+```
 
+To Enable prinitng on terminal to monitor success and failure initiate clients with debug=True
+```python
+w = (debug=True)  # Default is false
+```
 ---
+
 
 ## Settings API
 
@@ -157,18 +162,15 @@ Common flags:
 ---
 
 ## Troubleshooting
-
-- **“Only the first joint moved”**  
-  Some servers ignore multi-joint trajectories. The SDK sends **one service call per joint** for multi-motor moves to guarantee motion.
-
-- **“No motors known yet”**  
-  Provide the DB path/env var *or* let one `/motor_settings` message flow to seed names.
-
 - **ValueError: degrees range**  
   Angles must be within **−90 … +90**.
 
-- **Arm groups empty / missing joints**  
-  Check your naming: arm members must end with `_right` / `_left`. Fingers end with `_stretch` (excluded). Thumb opposition joints (contain both `thumb` and `opposition`) are excluded.
+- **ERROR: Could not find a version that satisfies the requirement mediapipe (from pib-sdk) (from versions: none)
+ERROR: No matching distribution found for mediapipe**
+  Python version must be equal to or between **3.9 … 3.11.9**.
+
+- **roslibpy.core.RosTimeoutError: Failed to connect to ROS**
+  pib software installtion on host is not correct.  
 
 ---
 
@@ -193,8 +195,7 @@ w.move(right_arm, -15)
 w.move(left_arm,  20)
 
 # Per-joint list
-w.move("shoulder_vertical_right", "shoulder_horizontal_right", "elbow_right",
-       -30, 5, 10)
+w.move("shoulder_vertical_right", -30, "shoulder_horizontal_right", 5, "elbow_right", 10)
 
 # Apply defaults to all
 w.set(All, default)
@@ -202,5 +203,6 @@ w.set(All, default)
 # Apply custom velocity to two joints
 w.set("shoulder_vertical_right", "wrist_right", velocity=8000)
 ```
+
 
 
