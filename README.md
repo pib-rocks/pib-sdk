@@ -19,7 +19,7 @@ pip install pib-sdk
 ```
 
 ## Usage
-```
+```python
 from pib_sdk.kinematics import fk, ik
 '''
 fk for Forward kinematics, returns pose of end effector from given angles
@@ -165,12 +165,12 @@ print(pose)
 
 ## Troubleshooting
 - **ValueError: degrees range**  
-  Angles must be within **−90 … +90**.
+  Angles must be within **−90 … +90**.  
 
-- **ERROR: Could not find a version that satisfies the requirement mediapipe (from pib-sdk) (from versions: none)**
-  Python version must be equal to or between **3.9 … 3.11.9**.
+- **ERROR: Could not find a version that satisfies the requirement mediapipe (from pib-sdk) (from versions: none)**  
+  Python version must be equal to or between **3.9 … 3.11.9**.  
 
-- **roslibpy.core.RosTimeoutError: Failed to connect to ROS**
+- **roslibpy.core.RosTimeoutError: Failed to connect to ROS**  
   pib software installation on host is not correct.  
 
 ---
@@ -220,3 +220,4 @@ sudo ./configure --enable-optimizations
 sudo make -j$(nproc)
 sudo make altinstall
 ```
+
