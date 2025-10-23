@@ -6,13 +6,14 @@ SDK for **pib** including forward, inverse kinematics and trajectory generatio
 * Ready‑made Denavit‑Hartenberg (DH) parameters for **pib**  
 * Multi point trajectory generation
 * Numeric **Jacobian** and analytical **pose error** utilities  
-* Zero ROS / Gazebo dependencies – pure Python ≥ 3.9
+* Zero ROS – pure Python ≥ 3.9
 * Writing joint values to ROS topic without ROS environment requirement
 * Sending speech packets to voice assistant without ROS environment
 * Variety of demos utilizing all pib features  
 
 ## Installation
 requires-python>=3.9,<3.12
+python 3.14 is automatically installed in new raspberry pi OS, you can either run the sdk in virtual environment or install a compatible python version like 3.9 alongside the default one and install the sdk with ``` pip3.9 ``` . Instructions are at the end of the ReadMe.
 ```
 pip install pib-sdk
 ```
@@ -77,6 +78,23 @@ w = (debug=True)  # Default is false
 ```
 ---
 
+## Speech 
+pib-sdk is able to send speech commands to voice assistant ROS topic easily similar to movement
+```python
+from pib_sdk.speech import speak
+
+# Connect to pib's ROSBridge
+sp = speak()
+
+# Speak text with default voice (Emma – Female, English)
+sp.say("Hello, I am pib!")
+
+# Speak with a specific voice preset
+sp.say("Guten Tag!", voice="Hannah")
+
+# Or explicitly define gender/language
+sp.say("Hi there", gender="Male", language="English")
+```
 
 ## Settings API
 
@@ -145,32 +163,15 @@ print(pose)
 - `ik(..., q0_deg=[...])` sets an initial guess (deg). Convergence settings: `tol`, `max_steps`, `custom_mask`.
 
 
-## CLI (optional)
-
-A tiny CLI is included:
-
-```bash
-python -m pib_sdk.control send --motor elbow_right --position-deg -30
-python -m pib_sdk.control echo --motor elbow_right
-```
-
-Common flags:
-- `--turn-on`, `--set-defaults`
-- `--velocity`, `--acceleration`, `--deceleration`, `--period`
-- `--verify-echo` (waits for `/motor_settings` echo), `--echo-timeout`
-
----
-
 ## Troubleshooting
 - **ValueError: degrees range**  
   Angles must be within **−90 … +90**.
 
-- **ERROR: Could not find a version that satisfies the requirement mediapipe (from pib-sdk) (from versions: none)
-ERROR: No matching distribution found for mediapipe**
+- **ERROR: Could not find a version that satisfies the requirement mediapipe (from pib-sdk) (from versions: none)**
   Python version must be equal to or between **3.9 … 3.11.9**.
 
 - **roslibpy.core.RosTimeoutError: Failed to connect to ROS**
-  pib software installtion on host is not correct.  
+  pib software installation on host is not correct.  
 
 ---
 
@@ -204,5 +205,18 @@ w.set(All, default)
 w.set("shoulder_vertical_right", "wrist_right", velocity=8000)
 ```
 
+## Installing a compatible python version alongside your current one in pi OS
+```
+sudo apt update
+sudo apt install -y build-essential zlib1g-dev libncurses5-dev libgdbm-dev \
+libnss3-dev libssl-dev libreadline-dev libffi-dev libsqlite3-dev wget libbz2-dev
 
+cd /usr/src
+sudo wget https://www.python.org/ftp/python/3.9.18/Python-3.9.18.tgz
+sudo tar -xf Python-3.9.18.tgz
+cd Python-3.9.18
 
+sudo ./configure --enable-optimizations
+sudo make -j$(nproc)
+sudo make altinstall
+```
