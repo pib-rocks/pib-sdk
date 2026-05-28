@@ -1,0 +1,110 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pib3"
+version = "0.1.4"
+description = "Inverse kinematics and trajectory generation for the PIB humanoid robot"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.8"
+authors = [
+    {name = "PIB Rocks Team"},
+]
+keywords = [
+    "robotics",
+    "inverse-kinematics",
+    "pib",
+    "humanoid-robot",
+    "trajectory-generation",
+    "drawing-robot",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Robotics",
+]
+
+dependencies = [
+    "numpy>=1.20.0,<2.0",  # roboticstoolbox/spatialmath not yet compatible with numpy 2.x
+    "Pillow>=9.0.0",
+    "PyYAML>=6.0.0",
+    "roboticstoolbox-python>=1.0.0",
+    "spatialmath-python>=1.0.0",
+    "opencv-python-headless>=4.5.0",
+    "roslibpy>=1.4.0",  # Includes websocket support via autobahn/twisted
+    "tinkerforge>=2.1.0",  # Low-latency direct motor control via servo bricklets
+    # Audio playback, recording, and TTS
+    # Note: On Linux, install PortAudio first: sudo apt-get install libportaudio2 portaudio19-dev
+    # Note: On Windows/macOS: No additional system requirements
+    "sounddevice>=0.5.5",  # 0.5.5 fixes callback exception on Python 3.13
+    "piper-tts>=1.2.0",
+    "pynput>=1.8.0",  # Keyboard listener for emergency stop key
+]
+
+[project.optional-dependencies]
+# Development dependencies
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/mamrehn/pib3"
+Documentation = "https://github.com/mamrehn/pib3#readme"
+Repository = "https://github.com/mamrehn/pib3.git"
+Issues = "https://github.com/mamrehn/pib3/issues"
+
+[tool.setuptools]
+packages = ["pib3", "pib3.backends", "pib3.tools"]
+
+[tool.setuptools.package-data]
+pib3 = ["resources/*.urdf", "resources/*.proto", "resources/*.yaml", "resources/stl/*.stl"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py38"
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "E501",    # Line too long (handled by formatter)
+    "W191",    # Formatter conflict
+    "E111",    # Formatter conflict
+    "E114",    # Formatter conflict
+    "E117",    # Formatter conflict
+    "D206",    # Formatter conflict
+    "D300",    # Formatter conflict
+    "Q000",    # Formatter conflict
+    "Q001",    # Formatter conflict
+    "Q002",    # Formatter conflict
+    "Q003",    # Formatter conflict
+    "COM812",  # Formatter conflict
+    "COM819",  # Formatter conflict
+    "ISC001",  # Formatter conflict
+    "ISC002",  # Formatter conflict
+]
+
+[tool.mypy]
+python_version = "3.8"
+strict = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --tb=short"

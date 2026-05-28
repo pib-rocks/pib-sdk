@@ -1,0 +1,71 @@
+# PIB Robot Hardware Limits Configuration
+# These values are specific to the physical robot hardware and may vary between units.
+# Discovered through manual calibration on robot at 172.26.34.149
+
+# Left Hand Joint Limits (radians)
+# Fully open = fingers extended, fully closed = fingers gripping
+left_hand:
+  thumb_left_opposition:
+    open: 0.0
+    closed: 0.0276
+  thumb_left_stretch:
+    open: 0.0
+    closed: 0.0555
+  index_left_stretch:
+    open: 0.0
+    closed: 0.0538
+  middle_left_stretch:
+    open: 0.0
+    closed: 0.0456
+  ring_left_stretch:
+    open: 0.0
+    closed: 0.0442
+  pinky_left_stretch:
+    open: 0.0
+    closed: 0.0267
+
+# Right Hand Joint Limits (radians)
+# TODO: Calibrate right hand
+right_hand:
+  thumb_right_opposition:
+    open: 0.0
+    closed: null  # Not yet calibrated
+  thumb_right_stretch:
+    open: 0.0
+    closed: null
+  index_right_stretch:
+    open: 0.0
+    closed: null
+  middle_right_stretch:
+    open: 0.0
+    closed: null
+  ring_right_stretch:
+    open: 0.0
+    closed: null
+  pinky_right_stretch:
+    open: 0.0
+    closed: null
+
+# Preset Poses
+presets:
+  left_hand_open:
+    thumb_left_opposition: 0.0
+    thumb_left_stretch: 0.0
+    index_left_stretch: 0.0
+    middle_left_stretch: 0.0
+    ring_left_stretch: 0.0
+    pinky_left_stretch: 0.0
+
+  left_hand_closed:
+    thumb_left_opposition: 0.0276
+    thumb_left_stretch: 0.0555
+    index_left_stretch: 0.0538
+    middle_left_stretch: 0.0456
+    ring_left_stretch: 0.0442
+    pinky_left_stretch: 0.0267
+
+# Notes:
+# - Values are in radians (URDF convention)
+# - The robot backend converts to centidegrees for the real robot
+# - Motor feedback is via /motor_current topic (DiagnosticStatus messages)
+# - Commands sent via /apply_joint_trajectory service (ROS2 format)

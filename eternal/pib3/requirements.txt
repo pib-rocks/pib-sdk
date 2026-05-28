@@ -1,0 +1,21 @@
+# Core dependencies
+numpy>=1.20.0,<2.0  # roboticstoolbox/spatialmath not yet compatible with numpy 2.x
+Pillow>=8.0.0
+PyYAML>=5.0.0
+roboticstoolbox-python>=1.0.0
+spatialmath-python>=1.0.0,<1.1.15  # Pin to avoid axis parsing issues
+
+# Image processing
+opencv-python-headless>=4.5.0
+
+# Real robot connection via rosbridge
+roslibpy>=1.0.0
+
+# Low-latency direct motor control via Tinkerforge
+tinkerforge>=2.1.0
+
+# Audio playback, recording, and TTS
+# Linux: Install PortAudio first: sudo apt-get install libportaudio2 portaudio19-dev
+# Windows/macOS: No additional system requirements
+sounddevice>=0.5.5  # 0.5.5 fixes callback exception on Python 3.13
+piper-tts>=1.2.0

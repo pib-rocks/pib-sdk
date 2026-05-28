@@ -1,0 +1,100 @@
+# PIB Robot Joint Limits for Real Robot
+# Calibrated using: python -m pib3.tools.calibrate_joints
+#
+# These values define the mapping from percentage (0-100%) to radians.
+# 0% = min (radians), 100% = max (radians)
+#
+# Values are in radians. Joints with 'null' are not calibrated.
+
+joints:
+  # Head joints
+  turn_head_motor:
+    min: -1.5707963267948966  # -90 degrees
+    max: 1.5707963267948966   # +90 degrees
+  tilt_forward_motor:
+    min: -0.7853981633974483  # -45 degrees
+    max: 1.2217304763960306   # +70 degrees
+
+  # Left arm joints
+  shoulder_vertical_left:
+    min: -1.5707963267948966  # -90 degrees
+    max: 1.5707963267948966   # +90 degrees
+  shoulder_horizontal_left:
+    min: -1.5707963267948966  # -90 degrees
+    max: 1.5707963267948966   # +90 degrees
+  upper_arm_left_rotation:
+    min: -1.5707963267948966  # -90 degrees
+    max: 1.5707963267948966   # +90 degrees
+  elbow_left:
+    min: -0.7853981633974483  # -45 degrees
+    max: 1.5707963267948966   # +90 degrees
+  lower_arm_left_rotation:
+    min: -1.5707963267948966  # -90 degrees
+    max: 1.5707963267948966   # +90 degrees
+  wrist_left:
+    min: -1.5707963267948966  # -90 degrees
+    max: 1.5707963267948966   # +90 degrees
+
+  # Left hand joints (0% = clenched/closed, 100% = open)
+  # Real robot finger motors: single motor controls both proximal and distal
+  # Motor range: -90° (clenched) to +90° (open)
+  thumb_left_opposition:
+    min: -1.5707963267948966  # -90 degrees (closed)
+    max: 1.5707963267948966   # +90 degrees (open)
+  thumb_left_stretch:
+    min: -1.5707963267948966  # -90 degrees (clenched)
+    max: 1.5707963267948966   # +90 degrees (open)
+  index_left_stretch:
+    min: -1.5707963267948966  # -90 degrees (clenched)
+    max: 1.5707963267948966   # +90 degrees (open)
+  middle_left_stretch:
+    min: -1.5707963267948966  # -90 degrees (clenched)
+    max: 1.5707963267948966   # +90 degrees (open)
+  ring_left_stretch:
+    min: -1.5707963267948966  # -90 degrees (clenched)
+    max: 1.5707963267948966   # +90 degrees (open)
+  pinky_left_stretch:
+    min: -1.5707963267948966  # -90 degrees (clenched)
+    max: 1.5707963267948966   # +90 degrees (open)
+
+  # Right arm joints
+  shoulder_vertical_right:
+    min: -1.5707963267948966  # -90 degrees
+    max: 1.5707963267948966   # +90 degrees
+  shoulder_horizontal_right:
+    min: -1.5707963267948966  # -90 degrees
+    max: 1.5707963267948966   # +90 degrees
+  upper_arm_right_rotation:
+    min: -1.5707963267948966  # -90 degrees
+    max: 1.5707963267948966   # +90 degrees
+  elbow_right:
+    min: -0.7853981633974483  # -45 degrees
+    max: 1.5707963267948966   # +90 degrees
+  lower_arm_right_rotation:
+    min: -1.5707963267948966  # -90 degrees
+    max: 1.5707963267948966   # +90 degrees
+  wrist_right:
+    min: -1.5707963267948966  # -90 degrees
+    max: 1.5707963267948966   # +90 degrees
+
+  # Right hand joints (0% = clenched/closed, 100% = open)
+  # Real robot finger motors: single motor controls both proximal and distal
+  # Motor range: -90° (clenched) to +90° (open)
+  thumb_right_opposition:
+    min: -1.5707963267948966  # -90 degrees (closed)
+    max: 1.5707963267948966   # +90 degrees (open)
+  thumb_right_stretch:
+    min: -1.5707963267948966  # -90 degrees (clenched)
+    max: 1.5707963267948966   # +90 degrees (open)
+  index_right_stretch:
+    min: -1.5707963267948966  # -90 degrees (clenched)
+    max: 1.5707963267948966   # +90 degrees (open)
+  middle_right_stretch:
+    min: -1.5707963267948966  # -90 degrees (clenched)
+    max: 1.5707963267948966   # +90 degrees (open)
+  ring_right_stretch:
+    min: -1.5707963267948966  # -90 degrees (clenched)
+    max: 1.5707963267948966   # +90 degrees (open)
+  pinky_right_stretch:
+    min: -1.5707963267948966  # -90 degrees (clenched)
+    max: 1.5707963267948966   # +90 degrees (open)
