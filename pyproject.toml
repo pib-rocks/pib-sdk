@@ -7,7 +7,6 @@ name = "pib-sdk"
 version = "0.3"
 description = "sdk with helper classes and functions to control pib via rosbridge and solve kinematics"
 readme = "README.md"
-requires-python = ">=3.9,<3.12"
 license = {file = "LICENSE"}
 
 authors = [
@@ -15,9 +14,9 @@ authors = [
 ]
 
 dependencies = [
-  "roboticstoolbox-python==1.1.0",
-  "numpy==1.26.4",
-  "scipy<1.12",
+  "pinocchio",
+  "numpy>=2.0",
+  "scipy>=1.12",
   "spatialmath-python",
   "roslibpy",
 ]
