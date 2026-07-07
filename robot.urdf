@@ -1,0 +1,1216 @@
+<robot name="pib">
+<link name="base_link"></link>
+<joint name="base_link_to_base" type="fixed">
+<parent link="base_link"/>
+<child link="urdf_body" />
+<origin rpy="0.0 0 0" xyz="0 0 0"/>
+</joint>
+<link name="urdf_body">
+<visual>
+<origin xyz="-0.013132987582171207555 0.012566156500572068372 0.89118743593020444127" rpy="0 -0 0" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_body.stl"/>
+</geometry>
+<material name="urdf_body_material">
+<color rgba="0.90196078431372550543 0.90196078431372550543 0.90196078431372550543 1.0"/>
+</material>
+</visual>
+<collision>
+<origin xyz="-0.013132987582171207555 0.012566156500572068372 0.89118743593020444127" rpy="0 -0 0" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_body.stl"/>
+</geometry>
+</collision>
+<inertial>
+<origin xyz="-0.013148572994685497894 0.0062708327937176754074 0.3390600811380728441" rpy="0 0 0"/>
+<mass value="14.742451245988362984" />
+<inertia ixx="1.0215370085595509853" ixy="8.1750220923067520971e-07"  ixz="2.0415306187995358275e-05" iyy="1.0802675023496579598" iyz="-0.0086376981174313364337" izz="0.10390259338508466003" />
+</inertial>
+</link>
+
+<link name="urdf_head_base">
+<visual>
+<origin xyz="0 1.7347234759768070944e-18 0.096600000000000019185" rpy="3.141592653589793116 -0 -5.2519588314391687104e-19" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_head_base.stl"/>
+</geometry>
+<material name="urdf_head_base_material">
+<color rgba="0.90196078431372550543 0.90196078431372550543 0.90196078431372550543 1.0"/>
+</material>
+</visual>
+<collision>
+<origin xyz="0 1.7347234759768070944e-18 0.096600000000000019185" rpy="3.141592653589793116 -0 -5.2519588314391687104e-19" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_head_base.stl"/>
+</geometry>
+</collision>
+<inertial>
+<origin xyz="-3.4780229255899585664e-05 0.017377672968967167177 -0.012899139977839313431" rpy="0 0 0"/>
+<mass value="0.2752183787437366691" />
+<inertia ixx="0.00026904306851896188585" ixy="4.9266012202656627337e-07"  ixz="-1.9175035112766405392e-09" iyy="0.00016134789791135662157" iyz="-1.2039857658914160575e-08" izz="0.00039920756811286805697" />
+</inertial>
+</link>
+
+<link name="urdf_head">
+<visual>
+<origin xyz="0.048000000000000014877 0.10950000000000004174 -0.041750000000000002387" rpy="1.570796326794896558 1.570796326794896558 0" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_head.stl"/>
+</geometry>
+<material name="urdf_head_material">
+<color rgba="0.90196078431372550543 0.90196078431372550543 0.90196078431372550543 1.0"/>
+</material>
+</visual>
+<collision>
+<origin xyz="0.048000000000000014877 0.10950000000000004174 -0.041750000000000002387" rpy="1.570796326794896558 1.570796326794896558 0" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_head.stl"/>
+</geometry>
+</collision>
+<inertial>
+<origin xyz="-0.010752349739485883573 -0.069547124687647815522 -0.041747581920920449894" rpy="0 0 0"/>
+<mass value="0.51230822453493207735" />
+<inertia ixx="0.0045866170752479808875" ixy="0.00041100822612432741203"  ixz="2.2896139325064005489e-06" iyy="0.003546183171123245409" iyz="5.7328545887266115502e-07" izz="0.0027748989212668900665" />
+</inertial>
+</link>
+
+<link name="urdf_camera_link">
+<visual>
+<origin xyz="-0.00024999999999998807898 0.10823202427590994379 0.09539999999999999869" rpy="1.570796326794896558 2.7161820220443780355e-20 0" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_camera_link.stl"/>
+</geometry>
+<material name="urdf_camera_link_material">
+<color rgba="0 0 0 1.0"/>
+</material>
+</visual>
+<collision>
+<origin xyz="-0.00024999999999998807898 0.10823202427590994379 0.09539999999999999869" rpy="1.570796326794896558 2.7161820220443780355e-20 0" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_camera_link.stl"/>
+</geometry>
+</collision>
+<inertial>
+<origin xyz="2.4053025196590915868e-16 4.1633363423443370266e-17 -0.0015000000000000152101" rpy="0 0 0"/>
+<mass value="0.011584290081750131529" />
+<inertia ixx="3.233128653290471716e-07" ixy="0"  ixz="-3.1009920596281262703e-24" iyy="6.4039677650293876714e-06" iyz="0" izz="6.7099041952358088781e-06" />
+</inertial>
+</link>
+
+<joint name="camera" type="fixed">
+<origin xyz="-0.04740000000000000463 0.0012679757240900979554 -0.04199999999999999567" rpy="2.4502643717466608141e-31 1.570796326794896558 0" />
+<parent link="urdf_head" />
+<child link="urdf_camera_link" />
+<axis xyz="0 0 1"/>
+<limit effort="1" velocity="20" />
+<joint_properties friction="0.0"/>
+</joint>
+
+<joint name="head_vertical" type="revolute">
+<origin xyz="-0.041250000000000008882 0.048000000000000021816 -0.012899999999999911537" rpy="1.570796326794896558 -2.7286008646779410258e-19 -1.5707963267948970021" />
+<parent link="urdf_head_base" />
+<child link="urdf_head" />
+<axis xyz="0 0 1"/>
+<limit effort="1" velocity="20" lower="-0.785398163397448279" upper="1.2217304763960306069"/>
+<joint_properties friction="0.0"/>
+</joint>
+
+<joint name="head_horizontal" type="revolute">
+<origin xyz="-0.013133585993821498758 0.012566127962098751214 0.98718743593020441551" rpy="3.141592653589793116 1.265248665445670253e-22 -0.0029026197161877579159" />
+<parent link="urdf_body" />
+<child link="urdf_head_base" />
+<axis xyz="0 0 1"/>
+<limit effort="1" velocity="20" lower="-1.570796326794896558" upper="1.570796326794896558"/>
+<joint_properties friction="0.0"/>
+</joint>
+
+<link name="urdf_shoulder_vertical">
+<visual>
+<origin xyz="-4.7531423241764514387e-16 1.1102230246251565404e-16 -0.0060000000000000053291" rpy="3.141592653589793116 -1.570796326794896558 0" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_shoulder_vertical.stl"/>
+</geometry>
+<material name="urdf_shoulder_vertical_material">
+<color rgba="0.90196078431372550543 0.90196078431372550543 0.90196078431372550543 1.0"/>
+</material>
+</visual>
+<collision>
+<origin xyz="-4.7531423241764514387e-16 1.1102230246251565404e-16 -0.0060000000000000053291" rpy="3.141592653589793116 -1.570796326794896558 0" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_shoulder_vertical.stl"/>
+</geometry>
+</collision>
+<inertial>
+<origin xyz="-4.7586038048089654607e-16 1.006971519153712357e-16 0.042642994191431304873" rpy="0 0 0"/>
+<mass value="0.25000000000000005551" />
+<inertia ixx="0.00072724079589201362679" ixy="-3.0188325501274182905e-66"  ixz="2.1951035501926014558e-43" iyy="0.00047340124215038056074" iyz="1.5330919207955027425e-42" izz="0.00067680797638553576341" />
+</inertial>
+</link>
+
+<link name="urdf_shoulder_horizontal">
+<visual>
+<origin xyz="0 -0.06500000000000000222 -0.037200000000000010836" rpy="-1.570796326794896558 1.1055592553687724786e-32 1.570796326794896558" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_shoulder_horizontal.stl"/>
+</geometry>
+<material name="urdf_shoulder_horizontal_material">
+<color rgba="0.90196078431372550543 0.90196078431372550543 0.90196078431372550543 1.0"/>
+</material>
+</visual>
+<collision>
+<origin xyz="0 -0.06500000000000000222 -0.037200000000000010836" rpy="-1.570796326794896558 1.1055592553687724786e-32 1.570796326794896558" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_shoulder_horizontal.stl"/>
+</geometry>
+</collision>
+<inertial>
+<origin xyz="0.03141565709210976387 1.2792556070007066182e-08 -0.037199999558260789245" rpy="0 0 0"/>
+<mass value="0.3499999999999999778" />
+<inertia ixx="0.00037058906386676219221" ixy="1.2826983306073644798e-10"  ixz="7.7908665627271018081e-11" iyy="0.00079724647302412360392" iyz="1.228809034117499628e-10" izz="0.00084576167306383361229" />
+</inertial>
+</link>
+
+<link name="urdf_elbow-upper">
+<visual>
+<origin xyz="-0.065000113126188405199 8.9579510675896756311e-07 0.14000000000000004108" rpy="-8.5703882523829208117e-32 -1.4514740933281445424e-31 -8.4163138569722206779e-32" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_elbow-upper.stl"/>
+</geometry>
+<material name="urdf_elbow-upper_material">
+<color rgba="0.90196078431372550543 0.90196078431372550543 0.90196078431372550543 1.0"/>
+</material>
+</visual>
+<collision>
+<origin xyz="-0.065000113126188405199 8.9579510675896756311e-07 0.14000000000000004108" rpy="-8.5703882523829208117e-32 -1.4514740933281445424e-31 -8.4163138569722206779e-32" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_elbow-upper.stl"/>
+</geometry>
+</collision>
+<inertial>
+<origin xyz="-4.4526328486782507099e-07 -0.0056136834333763933197 -0.021290240894863005083" rpy="0 0 0"/>
+<mass value="0.21700098433583239754" />
+<inertia ixx="0.00020767324075755694561" ixy="-4.6362216441835536371e-10"  ixz="-1.1291109162268427319e-09" iyy="0.0003257830855249441767" iyz="-2.9777665381350169389e-05" izz="0.00031634043511068947289" />
+</inertial>
+</link>
+
+<link name="urdf_elbow-lower">
+<visual>
+<origin xyz="-0.13812409200567399292 -0.16782384366109792673 0.027200113126188380647" rpy="2.356194490192344837 1.570796326794896558 0" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_elbow-lower.stl"/>
+</geometry>
+<material name="urdf_elbow-lower_material">
+<color rgba="0.90196078431372550543 0.90196078431372550543 0.90196078431372550543 1.0"/>
+</material>
+</visual>
+<collision>
+<origin xyz="-0.13812409200567399292 -0.16782384366109792673 0.027200113126188380647" rpy="2.356194490192344837 1.570796326794896558 0" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_elbow-lower.stl"/>
+</geometry>
+</collision>
+<inertial>
+<origin xyz="0.043032345513961067773 0.015369344989338867835 -0.03780034354696912291" rpy="0 0 0"/>
+<mass value="0.14960335360770107838" />
+<inertia ixx="0.00022936722111307648528" ixy="-5.4529749402997813423e-06"  ixz="-4.3421495042449351756e-09" iyy="0.0002490971711453321088" iyz="1.4345465837917943145e-09" izz="0.00016870950008625071694" />
+</inertial>
+</link>
+
+<link name="urdf_forearm">
+<visual>
+<origin xyz="-0.064741926567294549866 -0.00046870620534839035898 0.3034378600000000592" rpy="2.6458629090172392865e-18 1.0970096963229695419e-30 -6.1629758220391547298e-31" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_forearm.stl"/>
+</geometry>
+<material name="urdf_forearm_material">
+<color rgba="0.90196078431372550543 0.90196078431372550543 0.90196078431372550543 1.0"/>
+</material>
+</visual>
+<collision>
+<origin xyz="-0.064741926567294549866 -0.00046870620534839035898 0.3034378600000000592" rpy="2.6458629090172392865e-18 1.0970096963229695419e-30 -6.1629758220391547298e-31" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_forearm.stl"/>
+</geometry>
+</collision>
+<inertial>
+<origin xyz="0.0018761096199147175856 -4.4442311054501113136e-07 -0.050267094888194197022" rpy="0 0 0"/>
+<mass value="0.057000000000000022871" />
+<inertia ixx="0.00018119182777985410964" ixy="-2.0579821295390018919e-10"  ixz="7.3610097522744023874e-06" iyy="0.00017182225954469557291" iyz="-2.1213780997072684154e-09" izz="6.8995586508010560292e-05" />
+</inertial>
+</link>
+
+<link name="urdf_palm_left">
+<visual>
+<origin xyz="0.00299999999999990552 -0.10000000000000008882 -0.18269999999999986251" rpy="1.570796326794896558 1.5707963267948961139 0" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_palm_left.stl"/>
+</geometry>
+<material name="urdf_palm_left_material">
+<color rgba="0.90196078431372550543 0.90196078431372550543 0.90196078431372550543 1.0"/>
+</material>
+</visual>
+<collision>
+<origin xyz="0.00299999999999990552 -0.10000000000000008882 -0.18269999999999986251" rpy="1.570796326794896558 1.5707963267948961139 0" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_palm_left.stl"/>
+</geometry>
+</collision>
+<inertial>
+<origin xyz="0.0020987363637513193476 -0.041510352722250141999 -0.022975098204301658278" rpy="0 0 0"/>
+<mass value="0.20306541431131835962" />
+<inertia ixx="0.00025623389388053878632" ixy="-4.7921056976145965743e-07"  ixz="-1.9621105672899708542e-06" iyy="8.7454457046403348162e-05" iyz="-7.343814954060609156e-06" izz="0.00019183883445444719295" />
+</inertial>
+</link>
+
+<link name="urdf_thumb_rotator_left">
+<visual>
+<origin xyz="0.088236460769996402642 -0.078348848981385763035 -0.48802748055539579841" rpy="-2.932153143350473723 -2.782946186187463531e-17 -3.141592653589793116" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_thumb_rotator_left.stl"/>
+</geometry>
+<material name="urdf_thumb_rotator_left_material">
+<color rgba="0.90196078431372550543 0.90196078431372550543 0.90196078431372550543 1.0"/>
+</material>
+</visual>
+<collision>
+<origin xyz="0.088236460769996402642 -0.078348848981385763035 -0.48802748055539579841" rpy="-2.932153143350473723 -2.782946186187463531e-17 -3.141592653589793116" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_thumb_rotator_left.stl"/>
+</geometry>
+</collision>
+<inertial>
+<origin xyz="-0.0025419525965153094704 0.00063582665531473903098 -0.005730676783377131045" rpy="0 0 0"/>
+<mass value="0.019598631427577496017" />
+<inertia ixx="2.3515796946329439863e-06" ixy="1.5634947145857046287e-07"  ixz="-3.8747705154697874774e-07" iyy="2.9068174466283953522e-06" iyz="6.3565590282101302119e-08" izz="1.9521874764506291667e-06" />
+</inertial>
+</link>
+
+<link name="urdf_finger_proximal">
+<visual>
+<origin xyz="-0.081395940769996233399 -0.54244426802547995869 -0.061495438727617535157" rpy="1.7453292519943297556 -3.6417218234288628174e-16 -1.5556491259539178272e-16" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_finger_proximal.stl"/>
+</geometry>
+<material name="urdf_finger_proximal_material">
+<color rgba="0.90196078431372550543 0.90196078431372550543 0.90196078431372550543 1.0"/>
+</material>
+</visual>
+<collision>
+<origin xyz="-0.081395940769996233399 -0.54244426802547995869 -0.061495438727617535157" rpy="1.7453292519943297556 -3.6417218234288628174e-16 -1.5556491259539178272e-16" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_finger_proximal.stl"/>
+</geometry>
+</collision>
+<inertial>
+<origin xyz="-0.002337546325976047612 0.023999998253825594041 -3.4234414331146818838e-09" rpy="0 0 0"/>
+<mass value="0.017237431172515048361" />
+<inertia ixx="3.2796100873748338587e-06" ixy="-2.4787878097927551186e-13"  ixz="4.3676988672143376902e-13" iyy="8.3091893062354247182e-07" iyz="-6.0838833034707138977e-14" izz="3.2415371409603653756e-06" />
+</inertial>
+</link>
+
+<link name="urdf_finger_distal">
+<visual>
+<origin xyz="-0.081281787715045794585 -0.59056528241925143607 -0.06149543872761764618" rpy="1.7453292519943297556 -2.8784252333169289564e-16 3.9639590148360196859e-17" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_finger_distal.stl"/>
+</geometry>
+<material name="urdf_finger_distal_material">
+<color rgba="0.90196078431372550543 0.90196078431372550543 0.90196078431372550543 1.0"/>
+</material>
+</visual>
+<collision>
+<origin xyz="-0.081281787715045794585 -0.59056528241925143607 -0.06149543872761764618" rpy="1.7453292519943297556 -2.8784252333169289564e-16 3.9639590148360196859e-17" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_finger_distal.stl"/>
+</geometry>
+</collision>
+<inertial>
+<origin xyz="-0.004057225687468912767 0.024625911989551330095 -1.8077329383414664221e-08" rpy="0 0 0"/>
+<mass value="0.017727854940120840038" />
+<inertia ixx="3.2103559738202121377e-06" ixy="4.3523325608261775987e-07"  ixz="2.2812163347891701524e-12" iyy="9.9539225899604394283e-07" iyz="-6.0407081610536284176e-12" izz="3.1902417616991331003e-06" />
+</inertial>
+</link>
+
+<joint name="thumb_left_distal" type="revolute">
+<origin xyz="-4.4408920985006261617e-16 0.0480000000000008753 1.1102230246251565404e-16" rpy="3.4043456053708097799e-15 1.6500215347754368378e-14 -1.4669653638037516986e-15" />
+<parent link="urdf_finger_proximal" />
+<child link="urdf_finger_distal" />
+<axis xyz="0 0 1"/>
+<limit effort="1" velocity="20" lower="0" upper="1.570796326794896558"/>
+<joint_properties friction="0.0"/>
+</joint>
+
+<joint name="thumb_left_proximal" type="revolute">
+<origin xyz="-0.01999999999999822059 0.0013202599999988413881 -0.010564960629478425957" rpy="-1.6969431916550940149e-15 1.0471975511965765371 1.5707963267949003328" />
+<parent link="urdf_thumb_rotator_left" />
+<child link="urdf_finger_proximal" />
+<axis xyz="0 0 1"/>
+<limit effort="1" velocity="20" lower="0" upper="1.570796326794896558"/>
+<joint_properties friction="0.0"/>
+</joint>
+
+<joint name="thumb_left_opposition" type="revolute">
+<origin xyz="0.0098405199999991727067 -0.037730520924623256462 -0.049771355293541652554" rpy="-3.1415926535897491512 -1.3613568165555565148 -1.5707963267948970021" />
+<parent link="urdf_palm_left" />
+<child link="urdf_thumb_rotator_left" />
+<axis xyz="0 0 1"/>
+<limit effort="1" velocity="20" lower="0" upper="1.570796326794896558"/>
+<joint_properties friction="0.0"/>
+</joint>
+
+<link name="urdf_finger_proximal_2">
+<visual>
+<origin xyz="-0.081395940769996399933 -0.54244426802547995869 -0.061495438727617576791" rpy="1.7453292519943297556 -4.2001897567204022588e-16 1.9721522630525295135e-31" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_finger_proximal.stl"/>
+</geometry>
+<material name="urdf_finger_proximal_material">
+<color rgba="0.90196078431372550543 0.90196078431372550543 0.90196078431372550543 1.0"/>
+</material>
+</visual>
+<collision>
+<origin xyz="-0.081395940769996399933 -0.54244426802547995869 -0.061495438727617576791" rpy="1.7453292519943297556 -4.2001897567204022588e-16 1.9721522630525295135e-31" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_finger_proximal.stl"/>
+</geometry>
+</collision>
+<inertial>
+<origin xyz="-0.002337546325976241901 0.023999998253825594041 -3.4234414747480461344e-09" rpy="0 0 0"/>
+<mass value="0.017237431172515048361" />
+<inertia ixx="3.2796100873748338587e-06" ixy="-2.4787878050339230564e-13"  ixz="4.3676988694551090822e-13" iyy="8.3091893062354247182e-07" iyz="-6.0838833167056036986e-14" izz="3.2415371409603666462e-06" />
+</inertial>
+</link>
+
+<link name="urdf_finger_distal_2">
+<visual>
+<origin xyz="-0.081281787715045752951 -0.59056528241925121403 -0.06149543872761764618" rpy="1.7453292519943297556 -2.9755429575730562007e-16 3.6977854932234928379e-32" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_finger_distal.stl"/>
+</geometry>
+<material name="urdf_finger_distal_material">
+<color rgba="0.90196078431372550543 0.90196078431372550543 0.90196078431372550543 1.0"/>
+</material>
+</visual>
+<collision>
+<origin xyz="-0.081281787715045752951 -0.59056528241925121403 -0.06149543872761764618" rpy="1.7453292519943297556 -2.9755429575730562007e-16 3.6977854932234928379e-32" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_finger_distal.stl"/>
+</geometry>
+</collision>
+<inertial>
+<origin xyz="-0.0040572256874689266448 0.024625911989551552139 -1.8077329355659088606e-08" rpy="0 0 0"/>
+<mass value="0.017727854940120840038" />
+<inertia ixx="3.2103559738202121377e-06" ixy="4.3523325608261749517e-07"  ixz="2.2812163348872217512e-12" iyy="9.9539225899604394283e-07" iyz="-6.0407081605918645342e-12" izz="3.1902417616991356414e-06" />
+</inertial>
+</link>
+
+<joint name="index_left_distal" type="revolute">
+<origin xyz="-3.1225022567582527699e-16 0.048000000000000042633 -1.4294121442048890458e-15" rpy="-5.7518190022400760837e-15 1.1644799210561622379e-15 -2.9122888551423500944e-16" />
+<parent link="urdf_finger_proximal_2" />
+<child link="urdf_finger_distal_2" />
+<axis xyz="0 0 1"/>
+<limit effort="1" velocity="20" lower="0" upper="1.570796326794896558"/>
+<joint_properties friction="0.0"/>
+</joint>
+
+<joint name="index_left_proximal" type="revolute">
+<origin xyz="0.0029999999999996383726 -0.088617510000000399017 -0.058501979999998954263" rpy="-0.17453292519941709937 3.5838313298522497607e-15 3.1415926535897922278" />
+<parent link="urdf_palm_left" />
+<child link="urdf_finger_proximal_2" />
+<axis xyz="0 0 1"/>
+<limit effort="1" velocity="20" lower="0" upper="1.570796326794896558"/>
+<joint_properties friction="0.0"/>
+</joint>
+
+<link name="urdf_finger_proximal_3">
+<visual>
+<origin xyz="-0.081395940769996399933 -0.54244426802548006972 -0.061495438727617479646" rpy="1.7453292519943297556 -4.2001897567205274905e-16 -3.0854281107244765038e-30" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_finger_proximal.stl"/>
+</geometry>
+<material name="urdf_finger_proximal_material">
+<color rgba="0.90196078431372550543 0.90196078431372550543 0.90196078431372550543 1.0"/>
+</material>
+</visual>
+<collision>
+<origin xyz="-0.081395940769996399933 -0.54244426802548006972 -0.061495438727617479646" rpy="1.7453292519943297556 -4.2001897567205274905e-16 -3.0854281107244765038e-30" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_finger_proximal.stl"/>
+</geometry>
+</collision>
+<inertial>
+<origin xyz="-0.002337546325976241901 0.023999998253825594041 -3.423441391481318874e-09" rpy="0 0 0"/>
+<mass value="0.017237431172515048361" />
+<inertia ixx="3.2796100873748338587e-06" ixy="-2.4787878050339235613e-13"  ixz="4.3676988694551090822e-13" iyy="8.3091893062354278945e-07" iyz="-6.0838833519247229038e-14" izz="3.2415371409603666462e-06" />
+</inertial>
+</link>
+
+<link name="urdf_finger_distal_3">
+<visual>
+<origin xyz="-0.081281787715045752951 -0.59056528241925110301 -0.06149543872761764618" rpy="1.7453292519943299776 -2.9755429575730261254e-16 -1.9651595130191685214e-30" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_finger_distal.stl"/>
+</geometry>
+<material name="urdf_finger_distal_material">
+<color rgba="0.90196078431372550543 0.90196078431372550543 0.90196078431372550543 1.0"/>
+</material>
+</visual>
+<collision>
+<origin xyz="-0.081281787715045752951 -0.59056528241925110301 -0.06149543872761764618" rpy="1.7453292519943299776 -2.9755429575730261254e-16 -1.9651595130191685214e-30" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_finger_distal.stl"/>
+</geometry>
+</collision>
+<inertial>
+<origin xyz="-0.0040572256874689266448 0.024625911989551663162 -1.8077329369536876413e-08" rpy="0 0 0"/>
+<mass value="0.017727854940120840038" />
+<inertia ixx="3.2103559738202121377e-06" ixy="4.3523325608261749517e-07"  ixz="2.2812163349017951549e-12" iyy="9.9539225899604394283e-07" iyz="-6.0407081609205411963e-12" izz="3.1902417616991343709e-06" />
+</inertial>
+</link>
+
+<joint name="middle_left_distal" type="revolute">
+<origin xyz="1.0408340855860842566e-17 0.047999999999999598543 2.2204460492503130808e-16" rpy="-1.3339344563306795657e-16 -1.2246467991475767999e-16 -1.2183917479386091882e-13" />
+<parent link="urdf_finger_proximal_3" />
+<child link="urdf_finger_distal_3" />
+<axis xyz="0 0 1"/>
+<limit effort="1" velocity="20" lower="0" upper="1.570796326794896558"/>
+<joint_properties friction="0.0"/>
+</joint>
+
+<joint name="middle_left_proximal" type="revolute">
+<origin xyz="0.0029999999999999922562 -0.10000000000000008882 -0.032699999999999840306" rpy="1.1079694868186893038e-14 9.0926631032754174864e-15 -3.1415926535896958605" />
+<parent link="urdf_palm_left" />
+<child link="urdf_finger_proximal_3" />
+<axis xyz="0 0 1"/>
+<limit effort="1" velocity="20" lower="0" upper="1.570796326794896558"/>
+<joint_properties friction="0.0"/>
+</joint>
+
+<link name="urdf_finger_proximal_4">
+<visual>
+<origin xyz="-0.081395940769996386055 -0.54244426802547995869 -0.061495438727617701691" rpy="1.7453292519943297556 -4.200189756720378593e-16 2.571501661745837311e-30" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_finger_proximal.stl"/>
+</geometry>
+<material name="urdf_finger_proximal_material">
+<color rgba="0.90196078431372550543 0.90196078431372550543 0.90196078431372550543 1.0"/>
+</material>
+</visual>
+<collision>
+<origin xyz="-0.081395940769996386055 -0.54244426802547995869 -0.061495438727617701691" rpy="1.7453292519943297556 -4.200189756720378593e-16 2.571501661745837311e-30" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_finger_proximal.stl"/>
+</geometry>
+</collision>
+<inertial>
+<origin xyz="-0.0023375463259762280233 0.023999998253825816086 -3.4234416135259242126e-09" rpy="0 0 0"/>
+<mass value="0.017237431172515048361" />
+<inertia ixx="3.2796100873748338587e-06" ixy="-2.4787878050339235613e-13"  ixz="4.3676988694551100919e-13" iyy="8.3091893062354289533e-07" iyz="-6.083883336851262128e-14" izz="3.2415371409603683402e-06" />
+</inertial>
+</link>
+
+<link name="urdf_finger_distal_4">
+<visual>
+<origin xyz="-0.081281787715045739073 -0.59056528241925121403 -0.061495438727617590668" rpy="1.7453292519943297556 -2.9755429575730532425e-16 -1.4637067577342992483e-30" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_finger_distal.stl"/>
+</geometry>
+<material name="urdf_finger_distal_material">
+<color rgba="0.90196078431372550543 0.90196078431372550543 0.90196078431372550543 1.0"/>
+</material>
+</visual>
+<collision>
+<origin xyz="-0.081281787715045739073 -0.59056528241925121403 -0.061495438727617590668" rpy="1.7453292519943297556 -2.9755429575730532425e-16 -1.4637067577342992483e-30" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_finger_distal.stl"/>
+</geometry>
+</collision>
+<inertial>
+<origin xyz="-0.004057225687468912767 0.024625911989551552139 -1.8077329383414664221e-08" rpy="0 0 0"/>
+<mass value="0.017727854940120840038" />
+<inertia ixx="3.2103559738202121377e-06" ixy="4.3523325608261749517e-07"  ixz="2.2812163348542084398e-12" iyy="9.9539225899604394283e-07" iyz="-6.040708160463206445e-12" izz="3.1902417616991331003e-06" />
+</inertial>
+</link>
+
+<joint name="ring_left_distal" type="revolute">
+<origin xyz="-8.7083118494035716139e-16 0.04799999999999893241 -1.2767564783189300215e-15" rpy="-1.5739957264388719553e-14 2.0831010700593948281e-14 -1.2533702486397906555e-15" />
+<parent link="urdf_finger_proximal_4" />
+<child link="urdf_finger_distal_4" />
+<axis xyz="0 0 1"/>
+<limit effort="1" velocity="20" lower="0" upper="1.570796326794896558"/>
+<joint_properties friction="0.0"/>
+</joint>
+
+<joint name="ring_left_proximal" type="revolute">
+<origin xyz="0.0030000000000007624734 -0.088617510000000399017 -0.0068980200000007818595" rpy="0.17453292519945326489 -5.4736395411790019454e-15 3.1415926535897926719" />
+<parent link="urdf_palm_left" />
+<child link="urdf_finger_proximal_4" />
+<axis xyz="0 0 1"/>
+<limit effort="1" velocity="20" lower="0" upper="1.570796326794896558"/>
+<joint_properties friction="0.0"/>
+</joint>
+
+<link name="urdf_finger_proximal_5">
+<visual>
+<origin xyz="-0.081395940769996399933 -0.54244426802548006972 -0.061495438727617757202" rpy="1.7453292519943297556 -4.2001897567204091614e-16 -1.5715588346199844561e-31" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_finger_proximal.stl"/>
+</geometry>
+<material name="urdf_finger_proximal_material">
+<color rgba="0.90196078431372550543 0.90196078431372550543 0.90196078431372550543 1.0"/>
+</material>
+</visual>
+<collision>
+<origin xyz="-0.081395940769996399933 -0.54244426802548006972 -0.061495438727617757202" rpy="1.7453292519943297556 -4.2001897567204091614e-16 -1.5715588346199844561e-31" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_finger_proximal.stl"/>
+</geometry>
+</collision>
+<inertial>
+<origin xyz="-0.002337546325976241901 0.023999998253825483019 -3.4234416135259242126e-09" rpy="0 0 0"/>
+<mass value="0.017237431172515048361" />
+<inertia ixx="3.2796100873748338587e-06" ixy="-2.4787878050339230564e-13"  ixz="4.3676988694551090822e-13" iyy="8.309189306235425777e-07" iyz="-6.0838833337147271874e-14" izz="3.2415371409603674932e-06" />
+</inertial>
+</link>
+
+<link name="urdf_finger_distal_5">
+<visual>
+<origin xyz="-0.081281787715045766829 -0.5905652824192515471 -0.06149543872761764618" rpy="1.7453292519943297556 -2.9755429575730226741e-16 2.2957084937095851368e-31" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_finger_distal.stl"/>
+</geometry>
+<material name="urdf_finger_distal_material">
+<color rgba="0.90196078431372550543 0.90196078431372550543 0.90196078431372550543 1.0"/>
+</material>
+</visual>
+<collision>
+<origin xyz="-0.081281787715045766829 -0.5905652824192515471 -0.06149543872761764618" rpy="1.7453292519943297556 -2.9755429575730226741e-16 2.2957084937095851368e-31" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_finger_distal.stl"/>
+</geometry>
+</collision>
+<inertial>
+<origin xyz="-0.0040572256874689405226 0.02462591198955110805 -1.8077329411170239837e-08" rpy="0 0 0"/>
+<mass value="0.017727854940120840038" />
+<inertia ixx="3.2103559738202121377e-06" ixy="4.3523325608261744223e-07"  ixz="2.2812163348647667056e-12" iyy="9.9539225899604373107e-07" iyz="-6.0407081611337760798e-12" izz="3.1902417616991343709e-06" />
+</inertial>
+</link>
+
+<joint name="pinky_left_distal" type="revolute">
+<origin xyz="6.9388939039072283776e-17 0.047999999999999376499 0" rpy="1.3396059197522454079e-14 1.407467738322971551e-14 4.4292844687371071979e-16" />
+<parent link="urdf_finger_proximal_5" />
+<child link="urdf_finger_distal_5" />
+<axis xyz="0 0 1"/>
+<limit effort="1" velocity="20" lower="0" upper="1.570796326794896558"/>
+<joint_properties friction="0.0"/>
+</joint>
+
+<joint name="pinky_left_proximal" type="revolute">
+<origin xyz="0.0029999999999999714395 -0.075546140000001926751 0.015420549999999838553" rpy="0.31415926535898369698 1.5315909376505916669e-14 -3.1415926535897886751" />
+<parent link="urdf_palm_left" />
+<child link="urdf_finger_proximal_5" />
+<axis xyz="0 0 1"/>
+<limit effort="1" velocity="20" lower="0" upper="1.570796326794896558"/>
+<joint_properties friction="0.0"/>
+</joint>
+
+<joint name="wrist_left" type="revolute">
+<origin xyz="0.014999999999999440864 0.02600000000000035616 -0.15439999999999987068" rpy="1.5707963267948970021 -3.4345772533683209822e-16 -3.1415926535897868987" />
+<parent link="urdf_forearm" />
+<child link="urdf_palm_left" />
+<axis xyz="0 0 1"/>
+<limit effort="1" velocity="20" lower="-0.52359877559829881566" upper="0.52359877559829881566"/>
+<joint_properties friction="0.0"/>
+</joint>
+
+<joint name="forearm_left" type="revolute">
+<origin xyz="0.076438243046265286207 0.046739758236430839489 -0.037799999999997932476" rpy="2.3561944901923501661 1.5707963267948858999 0" />
+<parent link="urdf_elbow-lower" />
+<child link="urdf_forearm" />
+<axis xyz="0 0 1"/>
+<limit effort="1" velocity="20" lower="-1.570796326794896558" upper="1.570796326794896558"/>
+<joint_properties friction="0.0"/>
+</joint>
+
+<joint name="elbow_left" type="revolute">
+<origin xyz="-0.03789999999999912883 -0.021000000000000018652 -0.076337859999999757576" rpy="3.1415926535897904515 1.5707963267948874542 0" />
+<parent link="urdf_elbow-upper" />
+<child link="urdf_elbow-lower" />
+<axis xyz="0 0 1"/>
+<limit effort="1" velocity="20" lower="-0.785398163397448279" upper="1.570796326794896558"/>
+<joint_properties friction="0.0"/>
+</joint>
+
+<joint name="upper_arm_left" type="revolute">
+<origin xyz="0.13999999999999934719 -1.1449174941446926823e-16 -0.037199999999995569944" rpy="-1.570796326794896558 -1.6674196038535082709e-15 1.5707963267948945596" />
+<parent link="urdf_shoulder_horizontal" />
+<child link="urdf_elbow-upper" />
+<axis xyz="0 0 1"/>
+<limit effort="1" velocity="20" lower="-1.570796326794896558" upper="1.570796326794896558"/>
+<joint_properties friction="0.0"/>
+</joint>
+
+<joint name="shoulder_horizontal_left" type="revolute">
+<origin xyz="-6.6266436782314031007e-16 -0.037495364809995046507 0.059000000000001023848" rpy="1.57079632679489678 -1.5707963267948954478 0" />
+<parent link="urdf_shoulder_vertical" />
+<child link="urdf_shoulder_horizontal" />
+<axis xyz="0 0 1"/>
+<limit effort="1" velocity="20" lower="-1.570796326794896558" upper="1.570796326794896558"/>
+<joint_properties friction="0.0"/>
+</joint>
+
+<joint name="shoulder_vertical_left" type="revolute">
+<origin xyz="0.1468670124178287073 0.012565599637333581956 0.83568828976250497664" rpy="-1.570796326794896558 -0 -1.570796326794896558" />
+<parent link="urdf_body" />
+<child link="urdf_shoulder_vertical" />
+<axis xyz="0 0 1"/>
+<limit effort="1" velocity="20" lower="-1.570796326794896558" upper="1.570796326794896558"/>
+<joint_properties friction="0.0"/>
+</joint>
+
+<link name="urdf_shoulder_vertical_2">
+<visual>
+<origin xyz="-4.7531423241764514387e-16 1.1102230246251565404e-16 -0.0060000000000000053291" rpy="3.141592653589793116 -1.570796326794896558 0" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_shoulder_vertical.stl"/>
+</geometry>
+<material name="urdf_shoulder_vertical_material">
+<color rgba="0.90196078431372550543 0.90196078431372550543 0.90196078431372550543 1.0"/>
+</material>
+</visual>
+<collision>
+<origin xyz="-4.7531423241764514387e-16 1.1102230246251565404e-16 -0.0060000000000000053291" rpy="3.141592653589793116 -1.570796326794896558 0" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_shoulder_vertical.stl"/>
+</geometry>
+</collision>
+<inertial>
+<origin xyz="-4.7586038048089654607e-16 1.006971519153712357e-16 0.042642994191431304873" rpy="0 0 0"/>
+<mass value="0.25000000000000005551" />
+<inertia ixx="0.00072724079589201362679" ixy="-4.3924215229801008264e-76"  ixz="5.7948769800549160682e-48" iyy="0.00047340124215038056074" iyz="1.2012875121614688988e-47" izz="0.00067680797638553576341" />
+</inertial>
+</link>
+
+<link name="urdf_shoulder_horizontal_2">
+<visual>
+<origin xyz="0 0.06500000000000000222 -0.037200000000000010836" rpy="1.570796326794896558 1.4791141973171533545e-31 -1.570796326794896558" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_shoulder_horizontal.stl"/>
+</geometry>
+<material name="urdf_shoulder_horizontal_material">
+<color rgba="0.90196078431372550543 0.90196078431372550543 0.90196078431372550543 1.0"/>
+</material>
+</visual>
+<collision>
+<origin xyz="0 0.06500000000000000222 -0.037200000000000010836" rpy="1.570796326794896558 1.4791141973171533545e-31 -1.570796326794896558" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_shoulder_horizontal.stl"/>
+</geometry>
+</collision>
+<inertial>
+<origin xyz="0.03141565709210976387 -1.2792556056129278375e-08 -0.037200000441739232426" rpy="0 0 0"/>
+<mass value="0.3499999999999999778" />
+<inertia ixx="0.00037058906386676219221" ixy="-1.2826983306073642213e-10"  ixz="-7.7908665627271018081e-11" iyy="0.00079724647302412317024" iyz="1.2288090341174993695e-10" izz="0.00084576167306383361229" />
+</inertial>
+</link>
+
+<link name="urdf_elbow-upper_2">
+<visual>
+<origin xyz="-0.065000113126188405199 8.9579510664794526065e-07 0.14000000000000004108" rpy="-6.3221072019377880708e-31 -6.6980804052007131947e-31 -2.134136058872579744e-31" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_elbow-upper.stl"/>
+</geometry>
+<material name="urdf_elbow-upper_material">
+<color rgba="0.90196078431372550543 0.90196078431372550543 0.90196078431372550543 1.0"/>
+</material>
+</visual>
+<collision>
+<origin xyz="-0.065000113126188405199 8.9579510664794526065e-07 0.14000000000000004108" rpy="-6.3221072019377880708e-31 -6.6980804052007131947e-31 -2.134136058872579744e-31" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_elbow-upper.stl"/>
+</geometry>
+</collision>
+<inertial>
+<origin xyz="-4.4526328486782507099e-07 -0.005613683433376504342 -0.021290240894863005083" rpy="0 0 0"/>
+<mass value="0.21700098433583239754" />
+<inertia ixx="0.00020767324075755694561" ixy="-4.6362216441835536371e-10"  ixz="-1.1291109162268427319e-09" iyy="0.0003257830855249441767" iyz="-2.9777665381350169389e-05" izz="0.00031634043511068947289" />
+</inertial>
+</link>
+
+<link name="urdf_elbow-lower_2">
+<visual>
+<origin xyz="-0.13812409200567404843 -0.16782384366109792673 0.027200113126188370238" rpy="2.356194490192344837 1.570796326794896558 0" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_elbow-lower.stl"/>
+</geometry>
+<material name="urdf_elbow-lower_material">
+<color rgba="0.90196078431372550543 0.90196078431372550543 0.90196078431372550543 1.0"/>
+</material>
+</visual>
+<collision>
+<origin xyz="-0.13812409200567404843 -0.16782384366109792673 0.027200113126188370238" rpy="2.356194490192344837 1.570796326794896558 0" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_elbow-lower.stl"/>
+</geometry>
+</collision>
+<inertial>
+<origin xyz="0.043032345513961067773 0.015369344989338893856 -0.037800343546969129849" rpy="0 0 0"/>
+<mass value="0.14960335360770107838" />
+<inertia ixx="0.00022936722111307664791" ixy="-5.4529749402997660957e-06"  ixz="-4.34214950424493683e-09" iyy="0.00024909717114533216301" iyz="1.4345465837917941077e-09" izz="0.00016870950008625071694" />
+</inertial>
+</link>
+
+<link name="urdf_forearm_2">
+<visual>
+<origin xyz="-0.064741926567294535988 -0.00046870620534839035898 0.30343785999999994818" rpy="-1.8029589009935964194e-17 -3.1622885841323915255e-31 -1.0027142666266823121e-30" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_forearm.stl"/>
+</geometry>
+<material name="urdf_forearm_material">
+<color rgba="0.90196078431372550543 0.90196078431372550543 0.90196078431372550543 1.0"/>
+</material>
+</visual>
+<collision>
+<origin xyz="-0.064741926567294535988 -0.00046870620534839035898 0.30343785999999994818" rpy="-1.8029589009935964194e-17 -3.1622885841323915255e-31 -1.0027142666266823121e-30" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_forearm.stl"/>
+</geometry>
+</collision>
+<inertial>
+<origin xyz="0.0018761096199147314634 -4.4442311062226879472e-07 -0.050267094888194252533" rpy="0 0 0"/>
+<mass value="0.057000000000000022871" />
+<inertia ixx="0.00018119182777985410964" ixy="-2.057982129522934684e-10"  ixz="7.3610097522744015404e-06" iyy="0.00017182225954469551869" iyz="-2.1213780996957606787e-09" izz="6.8995586508010533187e-05" />
+</inertial>
+</link>
+
+<link name="urdf_palm_right">
+<visual>
+<origin xyz="-0.078395940769996452779 0.45626438159840421172 -0.025531293794651688245" rpy="-1.570796326794896336 -1.2246467991473490164e-16 -3.076797778756207795e-30" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_palm_right.stl"/>
+</geometry>
+<material name="urdf_palm_right_material">
+<color rgba="0.90196078431372550543 0.90196078431372550543 0.90196078431372550543 1.0"/>
+</material>
+</visual>
+<collision>
+<origin xyz="-0.078395940769996452779 0.45626438159840421172 -0.025531293794651688245" rpy="-1.570796326794896336 -1.2246467991473490164e-16 -3.076797778756207795e-30" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_palm_right.stl"/>
+</geometry>
+</collision>
+<inertial>
+<origin xyz="0.0020986680458357220846 -0.041510795320818250076 -0.027423536937199139568" rpy="0 0 0"/>
+<mass value="0.20307147221043780894" />
+<inertia ixx="0.00025624174633090862933" ixy="-4.7993332158089023214e-07"  ixz="1.9636296955894468069e-06" iyy="8.7460207888254089302e-05" iyz="7.3474968615650606597e-06" izz="0.00019184139974401395409" />
+</inertial>
+</link>
+
+<link name="urdf_thumb_rotator_right">
+<visual>
+<origin xyz="0.20176353923000328594 -0.015767430045240244524 -0.1936050527345201111" rpy="2.932153143350473723 -8.8846285663780224435e-17 -2.0357331866902574341e-30" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_thumb_rotator_right.stl"/>
+</geometry>
+<material name="urdf_thumb_rotator_right_material">
+<color rgba="0.90196078431372550543 0.90196078431372550543 0.90196078431372550543 1.0"/>
+</material>
+</visual>
+<collision>
+<origin xyz="0.20176353923000328594 -0.015767430045240244524 -0.1936050527345201111" rpy="2.932153143350473723 -8.8846285663780224435e-17 -2.0357331866902574341e-30" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_thumb_rotator_right.stl"/>
+</geometry>
+</collision>
+<inertial>
+<origin xyz="0.002541953318371509285 0.00063582435660355235418 -0.0057306758962854531525" rpy="0 0 0"/>
+<mass value="0.019598635830411437198" />
+<inertia ixx="2.3515802423962070417e-06" ixy="-1.5634928930020457885e-07"  ixz="3.874770382340498427e-07" iyy="2.906817939103035437e-06" iyz="6.356602880407572152e-08" izz="1.9521876419465009579e-06" />
+</inertial>
+</link>
+
+<link name="urdf_finger_proximal_6">
+<visual>
+<origin xyz="-0.081395940769996455444 -0.54244426802548018074 -0.061495438727617757202" rpy="1.7453292519943299776 -3.9219556740013627602e-16 -3.970824808953769797e-17" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_finger_proximal.stl"/>
+</geometry>
+<material name="urdf_finger_proximal_material">
+<color rgba="0.90196078431372550543 0.90196078431372550543 0.90196078431372550543 1.0"/>
+</material>
+</visual>
+<collision>
+<origin xyz="-0.081395940769996455444 -0.54244426802548018074 -0.061495438727617757202" rpy="1.7453292519943299776 -3.9219556740013627602e-16 -3.970824808953769797e-17" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_finger_proximal.stl"/>
+</geometry>
+</collision>
+<inertial>
+<origin xyz="-0.0023375463259762696566 0.023999998253825483019 -3.4234416135259242126e-09" rpy="0 0 0"/>
+<mass value="0.017237431172515048361" />
+<inertia ixx="3.2796100873748338587e-06" ixy="-2.4787878060256274896e-13"  ixz="4.367698871267290956e-13" iyy="8.3091893062354268358e-07" iyz="-6.0838832948184635079e-14" izz="3.2415371409603666462e-06" />
+</inertial>
+</link>
+
+<link name="urdf_finger_distal_6">
+<visual>
+<origin xyz="-0.081281787715045794585 -0.59056528241925121403 -0.06149543872761764618" rpy="1.7453292519943297556 -2.7978752318107391819e-16 1.2952772140919875963e-16" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_finger_distal.stl"/>
+</geometry>
+<material name="urdf_finger_distal_material">
+<color rgba="0.90196078431372550543 0.90196078431372550543 0.90196078431372550543 1.0"/>
+</material>
+</visual>
+<collision>
+<origin xyz="-0.081281787715045794585 -0.59056528241925121403 -0.06149543872761764618" rpy="1.7453292519943297556 -2.7978752318107391819e-16 1.2952772140919875963e-16" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_finger_distal.stl"/>
+</geometry>
+</collision>
+<inertial>
+<origin xyz="-0.0040572256874689544004 0.024625911989551330095 -1.8077329411170239837e-08" rpy="0 0 0"/>
+<mass value="0.017727854940120840038" />
+<inertia ixx="3.2103559738202121377e-06" ixy="4.352332560826178128e-07"  ixz="2.2812163348780015954e-12" iyy="9.9539225899604373107e-07" iyz="-6.040708161054366741e-12" izz="3.1902417616991331003e-06" />
+</inertial>
+</link>
+
+<joint name="thumb_right_distal" type="revolute">
+<origin xyz="-3.1086244689504383132e-15 0.048000000000001444289 -5.5511151231257827021e-16" rpy="-2.4642190643016389988e-15 1.0357144347496651794e-14 3.8772474556332299561e-14" />
+<parent link="urdf_finger_proximal_6" />
+<child link="urdf_finger_distal_6" />
+<axis xyz="0 0 1"/>
+<limit effort="1" velocity="20" lower="0" upper="1.570796326794896558"/>
+<joint_properties friction="0.0"/>
+</joint>
+
+<joint name="thumb_right_proximal" type="revolute">
+<origin xyz="0.019999999999999858169 0.0013202599999999932445 -0.010564960629476649601" rpy="-3.1415926535897287231 1.0471975511966098438 1.5707963267949747177" />
+<parent link="urdf_thumb_rotator_right" />
+<child link="urdf_finger_proximal_6" />
+<axis xyz="0 0 1"/>
+<limit effort="1" velocity="20" lower="0" upper="1.570796326794896558"/>
+<joint_properties friction="0.0"/>
+</joint>
+
+<joint name="thumb_right_opposition" type="revolute">
+<origin xyz="0.0098405199999922025877 -0.03773052092462458873 -0.00062864470645057624054" rpy="5.4969693632471794453e-15 -1.3613568165555778311 1.5707963267948776842" />
+<parent link="urdf_palm_right" />
+<child link="urdf_thumb_rotator_right" />
+<axis xyz="0 0 1"/>
+<limit effort="1" velocity="20" lower="0" upper="1.570796326794896558"/>
+<joint_properties friction="0.0"/>
+</joint>
+
+<link name="urdf_finger_proximal_7">
+<visual>
+<origin xyz="-0.081395940769996399933 -0.54244426802547995869 -0.061495438727617576791" rpy="1.7453292519943297556 -4.2001897567203805652e-16 2.3527212926223181141e-30" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_finger_proximal.stl"/>
+</geometry>
+<material name="urdf_finger_proximal_material">
+<color rgba="0.90196078431372550543 0.90196078431372550543 0.90196078431372550543 1.0"/>
+</material>
+</visual>
+<collision>
+<origin xyz="-0.081395940769996399933 -0.54244426802547995869 -0.061495438727617576791" rpy="1.7453292519943297556 -4.2001897567203805652e-16 2.3527212926223181141e-30" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_finger_proximal.stl"/>
+</geometry>
+</collision>
+<inertial>
+<origin xyz="-0.002337546325976241901 0.023999998253825705063 -3.4234414747480461344e-09" rpy="0 0 0"/>
+<mass value="0.017237431172515048361" />
+<inertia ixx="3.2796100873748338587e-06" ixy="-2.4787878050339225515e-13"  ixz="4.3676988694551090822e-13" iyy="8.3091893062354268358e-07" iyz="-6.0838832786177470042e-14" izz="3.2415371409603666462e-06" />
+</inertial>
+</link>
+
+<link name="urdf_finger_distal_7">
+<visual>
+<origin xyz="-0.081281787715045752951 -0.59056528241925132505 -0.061495438727617382502" rpy="1.7453292519943297556 -2.9755429575730655684e-16 -8.2001676705559847608e-31" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_finger_distal.stl"/>
+</geometry>
+<material name="urdf_finger_distal_material">
+<color rgba="0.90196078431372550543 0.90196078431372550543 0.90196078431372550543 1.0"/>
+</material>
+</visual>
+<collision>
+<origin xyz="-0.081281787715045752951 -0.59056528241925132505 -0.061495438727617382502" rpy="1.7453292519943297556 -2.9755429575730655684e-16 -8.2001676705559847608e-31" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_finger_distal.stl"/>
+</geometry>
+</collision>
+<inertial>
+<origin xyz="-0.0040572256874689266448 0.024625911989551330095 -1.8077329147492271488e-08" rpy="0 0 0"/>
+<mass value="0.017727854940120840038" />
+<inertia ixx="3.2103559738202121377e-06" ixy="4.3523325608261744223e-07"  ixz="2.2812163348780015954e-12" iyy="9.9539225899604373107e-07" iyz="-6.0407081607896689449e-12" izz="3.1902417616991339474e-06" />
+</inertial>
+</link>
+
+<joint name="index_right_distal" type="revolute">
+<origin xyz="2.0816681711721685133e-17 0.048000000000000042633 9.7144514654701197287e-17" rpy="1.895664126581919506e-15 1.1546319456101489181e-14 -2.3753130541858614063e-15" />
+<parent link="urdf_finger_proximal_7" />
+<child link="urdf_finger_distal_7" />
+<axis xyz="0 0 1"/>
+<limit effort="1" velocity="20" lower="0" upper="1.570796326794896558"/>
+<joint_properties friction="0.0"/>
+</joint>
+
+<joint name="index_right_proximal" type="revolute">
+<origin xyz="0.0029999999999999818479 -0.088617509999999954928 0.0081019799999997865747" rpy="0.17453292519942875671 -7.9022604436745628712e-15 3.1415926535897744643" />
+<parent link="urdf_palm_right" />
+<child link="urdf_finger_proximal_7" />
+<axis xyz="0 0 1"/>
+<limit effort="1" velocity="20" lower="0" upper="1.570796326794896558"/>
+<joint_properties friction="0.0"/>
+</joint>
+
+<link name="urdf_finger_proximal_8">
+<visual>
+<origin xyz="-0.081395940769996399933 -0.54244426802548029176 -0.061495438727617729446" rpy="1.7453292519943297556 -4.2001897567203899329e-16 -6.3690997773111908306e-30" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_finger_proximal.stl"/>
+</geometry>
+<material name="urdf_finger_proximal_material">
+<color rgba="0.90196078431372550543 0.90196078431372550543 0.90196078431372550543 1.0"/>
+</material>
+</visual>
+<collision>
+<origin xyz="-0.081395940769996399933 -0.54244426802548029176 -0.061495438727617729446" rpy="1.7453292519943297556 -4.2001897567203899329e-16 -6.3690997773111908306e-30" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_finger_proximal.stl"/>
+</geometry>
+</collision>
+<inertial>
+<origin xyz="-0.002337546325976241901 0.023999998253825371997 -3.4234416135259242126e-09" rpy="0 0 0"/>
+<mass value="0.017237431172515048361" />
+<inertia ixx="3.2796100873748338587e-06" ixy="-2.4787878050339230564e-13"  ixz="4.3676988694551080725e-13" iyy="8.3091893062354268358e-07" iyz="-6.0838833046548723715e-14" izz="3.2415371409603653756e-06" />
+</inertial>
+</link>
+
+<link name="urdf_finger_distal_8">
+<visual>
+<origin xyz="-0.081281787715045739073 -0.5905652824192515471 -0.061495438727617701691" rpy="1.7453292519943297556 -2.9755429575730137994e-16 -4.5670371790464979615e-31" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_finger_distal.stl"/>
+</geometry>
+<material name="urdf_finger_distal_material">
+<color rgba="0.90196078431372550543 0.90196078431372550543 0.90196078431372550543 1.0"/>
+</material>
+</visual>
+<collision>
+<origin xyz="-0.081281787715045739073 -0.5905652824192515471 -0.061495438727617701691" rpy="1.7453292519943297556 -2.9755429575730137994e-16 -4.5670371790464979615e-31" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_finger_distal.stl"/>
+</geometry>
+</collision>
+<inertial>
+<origin xyz="-0.004057225687468912767 0.02462591198955110805 -1.8077329480559178876e-08" rpy="0 0 0"/>
+<mass value="0.017727854940120840038" />
+<inertia ixx="3.2103559738202121377e-06" ixy="4.3523325608261744223e-07"  ixz="2.2812163348661052195e-12" iyy="9.9539225899604351931e-07" iyz="-6.0407081603933605742e-12" izz="3.1902417616991331003e-06" />
+</inertial>
+</link>
+
+<joint name="middle_right_distal" type="revolute">
+<origin xyz="6.9388939039072283776e-18 0.047999999999999820588 -5.5511151231257827021e-17" rpy="1.7938038903877446291e-16 -1.4042463755251398898e-29 -3.7682219008385338759e-15" />
+<parent link="urdf_finger_proximal_8" />
+<child link="urdf_finger_distal_8" />
+<axis xyz="0 0 1"/>
+<limit effort="1" velocity="20" lower="0" upper="1.570796326794896558"/>
+<joint_properties friction="0.0"/>
+</joint>
+
+<joint name="middle_right_proximal" type="revolute">
+<origin xyz="0.0029999999999999957256 -0.099999999999999866773 -0.01770000000000016005" rpy="-1.9967346175463014637e-16 4.7743279131871830438e-16 3.1415926535897771288" />
+<parent link="urdf_palm_right" />
+<child link="urdf_finger_proximal_8" />
+<axis xyz="0 0 1"/>
+<limit effort="1" velocity="20" lower="0" upper="1.570796326794896558"/>
+<joint_properties friction="0.0"/>
+</joint>
+
+<link name="urdf_finger_proximal_9">
+<visual>
+<origin xyz="-0.081395940769996413811 -0.54244426802548006972 -0.06149543872761764618" rpy="1.7453292519943297556 -4.2001897567204037379e-16 1.6462142959986574996e-31" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_finger_proximal.stl"/>
+</geometry>
+<material name="urdf_finger_proximal_material">
+<color rgba="0.90196078431372550543 0.90196078431372550543 0.90196078431372550543 1.0"/>
+</material>
+</visual>
+<collision>
+<origin xyz="-0.081395940769996413811 -0.54244426802548006972 -0.06149543872761764618" rpy="1.7453292519943297556 -4.2001897567204037379e-16 1.6462142959986574996e-31" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_finger_proximal.stl"/>
+</geometry>
+</collision>
+<inertial>
+<origin xyz="-0.0023375463259762557788 0.023999998253825483019 -3.4234415857703481834e-09" rpy="0 0 0"/>
+<mass value="0.017237431172515048361" />
+<inertia ixx="3.2796100873748338587e-06" ixy="-2.4787878050339230564e-13"  ixz="4.3676988694551100919e-13" iyy="8.309189306235425777e-07" iyz="-6.0838833371299231406e-14" izz="3.2415371409603679167e-06" />
+</inertial>
+</link>
+
+<link name="urdf_finger_distal_9">
+<visual>
+<origin xyz="-0.081281787715045766829 -0.59056528241925121403 -0.061495438727617535157" rpy="1.7453292519943297556 -2.9755429575731434684e-16 -1.8480603396716468065e-29" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_finger_distal.stl"/>
+</geometry>
+<material name="urdf_finger_distal_material">
+<color rgba="0.90196078431372550543 0.90196078431372550543 0.90196078431372550543 1.0"/>
+</material>
+</visual>
+<collision>
+<origin xyz="-0.081281787715045766829 -0.59056528241925121403 -0.061495438727617535157" rpy="1.7453292519943297556 -2.9755429575731434684e-16 -1.8480603396716468065e-29" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_finger_distal.stl"/>
+</geometry>
+</collision>
+<inertial>
+<origin xyz="-0.0040572256874689405226 0.024625911989551552139 -1.8077329272392361759e-08" rpy="0 0 0"/>
+<mass value="0.017727854940120840038" />
+<inertia ixx="3.2103559738202121377e-06" ixy="4.3523325608261749517e-07"  ixz="2.2812163348898983752e-12" iyy="9.9539225899604394283e-07" iyz="-6.0407081610536284176e-12" izz="3.1902417616991339474e-06" />
+</inertial>
+</link>
+
+<joint name="ring_right_distal" type="revolute">
+<origin xyz="2.4286128663675299322e-17 0.047999999999999820588 -3.3306690738754696213e-16" rpy="-7.6107358035160201657e-16 -2.3564205314604841053e-15 -9.0136550186652616342e-14" />
+<parent link="urdf_finger_proximal_9" />
+<child link="urdf_finger_distal_9" />
+<axis xyz="0 0 1"/>
+<limit effort="1" velocity="20" lower="0" upper="1.570796326794896558"/>
+<joint_properties friction="0.0"/>
+</joint>
+
+<joint name="ring_right_proximal" type="revolute">
+<origin xyz="0.0030000000000000096034 -0.088617509999999954928 -0.043501979999999912385" rpy="-0.17453292519943275352 -1.4257283672261342108e-16 3.1415926535897789051" />
+<parent link="urdf_palm_right" />
+<child link="urdf_finger_proximal_9" />
+<axis xyz="0 0 1"/>
+<limit effort="1" velocity="20" lower="0" upper="1.570796326794896558"/>
+<joint_properties friction="0.0"/>
+</joint>
+
+<link name="urdf_finger_proximal_10">
+<visual>
+<origin xyz="-0.081395940769996399933 -0.54244426802548029176 -0.061495438727617535157" rpy="1.7453292519943297556 -4.2001897567204219804e-16 1.1246484746163073821e-30" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_finger_proximal.stl"/>
+</geometry>
+<material name="urdf_finger_proximal_material">
+<color rgba="0.90196078431372550543 0.90196078431372550543 0.90196078431372550543 1.0"/>
+</material>
+</visual>
+<collision>
+<origin xyz="-0.081395940769996399933 -0.54244426802548029176 -0.061495438727617535157" rpy="1.7453292519943297556 -4.2001897567204219804e-16 1.1246484746163073821e-30" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_finger_proximal.stl"/>
+</geometry>
+</collision>
+<inertial>
+<origin xyz="-0.002337546325976241901 0.023999998253825260974 -3.4234414469924701052e-09" rpy="0 0 0"/>
+<mass value="0.017237431172515048361" />
+<inertia ixx="3.2796100873748338587e-06" ixy="-2.4787878050339225515e-13"  ixz="4.3676988694551090822e-13" iyy="8.309189306235425777e-07" iyz="-6.0838832963381857402e-14" izz="3.2415371409603674932e-06" />
+</inertial>
+</link>
+
+<link name="urdf_finger_distal_10">
+<visual>
+<origin xyz="-0.081281787715045739073 -0.59056528241925132505 -0.061495438727617535157" rpy="1.7453292519943297556 -2.9801202395369849479e-16 -3.4275839152270891641e-18" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_finger_distal.stl"/>
+</geometry>
+<material name="urdf_finger_distal_material">
+<color rgba="0.90196078431372550543 0.90196078431372550543 0.90196078431372550543 1.0"/>
+</material>
+</visual>
+<collision>
+<origin xyz="-0.081281787715045739073 -0.59056528241925132505 -0.061495438727617535157" rpy="1.7453292519943297556 -2.9801202395369849479e-16 -3.4275839152270891641e-18" />
+<geometry>
+<mesh filename="package://pibsim_webots/protos/resources/urdf_finger_distal.stl"/>
+</geometry>
+</collision>
+<inertial>
+<origin xyz="-0.0040572256874689266448 0.024625911989551330095 -1.8077329300147937374e-08" rpy="0 0 0"/>
+<mass value="0.017727854940120840038" />
+<inertia ixx="3.2103559738202112906e-06" ixy="4.3523325608261738929e-07"  ixz="2.2812163348688089046e-12" iyy="9.9539225899604373107e-07" iyz="-6.0407081610014271817e-12" izz="3.1902417616991331003e-06" />
+</inertial>
+</link>
+
+<joint name="pinky_right_distal" type="revolute">
+<origin xyz="2.7755575615628913511e-17 0.047999999999999820588 2.2204460492503130808e-16" rpy="2.281694841159882425e-15 -2.6408619738520520972e-15 0.087928922311172039161" />
+<parent link="urdf_finger_proximal_10" />
+<child link="urdf_finger_distal_10" />
+<axis xyz="0 0 1"/>
+<limit effort="1" velocity="20" lower="0" upper="1.570796326794896558"/>
+<joint_properties friction="0.0"/>
+</joint>
+
+<joint name="pinky_right_proximal" type="revolute">
+<origin xyz="0.0030000000000000512368 -0.075546139999999928349 -0.065820550000000255242" rpy="-0.3141592653589848072 -3.7826035582164112523e-15 3.1415926535897771288" />
+<parent link="urdf_palm_right" />
+<child link="urdf_finger_proximal_10" />
+<axis xyz="0 0 1"/>
+<limit effort="1" velocity="20" lower="0" upper="1.570796326794896558"/>
+<joint_properties friction="0.0"/>
+</joint>
+
+<joint name="wrist_right" type="revolute">
+<origin xyz="0.014999999999992481153 0.024999999999990474286 -0.15439999999999853841" rpy="1.570796326794896336 -1.6849081576833351553e-14 -3.1415926535897771288" />
+<parent link="urdf_forearm_2" />
+<child link="urdf_palm_right" />
+<axis xyz="0 0 1"/>
+<limit effort="1" velocity="20" lower="-0.52359877559829881566" upper="0.52359877559829881566"/>
+<joint_properties friction="0.0"/>
+</joint>
+
+<joint name="forearm_right" type="revolute">
+<origin xyz="0.076438243046270615277 0.046739758236434170158 -0.037799999999999951694" rpy="0.7853981633974851384 -1.5707963267948850117 0" />
+<parent link="urdf_elbow-lower_2" />
+<child link="urdf_forearm_2" />
+<axis xyz="0 0 1"/>
+<limit effort="1" velocity="20" lower="-1.570796326794896558" upper="1.570796326794896558"/>
+<joint_properties friction="0.0"/>
+</joint>
+
+<joint name="elbow_right" type="revolute">
+<origin xyz="-0.037899999999999982314 -0.020999999999997687183 -0.076337859999996593441" rpy="-3.1415926535897926719 1.570796326794881681 0" />
+<parent link="urdf_elbow-upper_2" />
+<child link="urdf_elbow-lower_2" />
+<axis xyz="0 0 1"/>
+<limit effort="1" velocity="20" lower="-0.785398163397448279" upper="1.570796326794896558"/>
+<joint_properties friction="0.0"/>
+</joint>
+
+<joint name="upper_arm_right" type="revolute">
+<origin xyz="0.14000000000000023537 3.9898639947466563171e-17 -0.037200000000000787992" rpy="-1.5707963267948961139 5.2186995640945646394e-15 1.5707963267948894526" />
+<parent link="urdf_shoulder_horizontal_2" />
+<child link="urdf_elbow-upper_2" />
+<axis xyz="0 0 1"/>
+<limit effort="1" velocity="20" lower="-1.570796326794896558" upper="1.570796326794896558"/>
+<joint_properties friction="0.0"/>
+</joint>
+
+<joint name="shoulder_horizontal_right" type="revolute">
+<origin xyz="-6.4184768611141862493e-16 -0.037495364809999709443 0.059000000000000080158" rpy="1.5707963267948992225 -1.5707963267948956698 0" />
+<parent link="urdf_shoulder_vertical_2" />
+<child link="urdf_shoulder_horizontal_2" />
+<axis xyz="0 0 1"/>
+<limit effort="1" velocity="20" lower="-1.570796326794896558" upper="1.570796326794896558"/>
+<joint_properties friction="0.0"/>
+</joint>
+
+<joint name="shoulder_vertical_right" type="revolute">
+<origin xyz="-0.1731329875821712716 0.012565756136336734411 0.83568843836869388664" rpy="-1.570796326794896558 -0 1.570796326794896558" />
+<parent link="urdf_body" />
+<child link="urdf_shoulder_vertical_2" />
+<axis xyz="0 0 1"/>
+<limit effort="1" velocity="20" lower="-1.570796326794896558" upper="1.570796326794896558"/>
+<joint_properties friction="0.0"/>
+</joint>
+
+
+</robot>

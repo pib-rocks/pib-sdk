@@ -14,7 +14,7 @@ authors = [
 ]
 
 dependencies = [
-  "pinocchio",
+  "pin=4.0.0",
   "numpy>=2.0",
   "scipy>=1.12",
   "spatialmath-python",

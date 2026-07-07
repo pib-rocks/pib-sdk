@@ -26,7 +26,7 @@ ARM_JOINTS_LEFT = [
 
 
 def _build_reduced_model(arm_joints: list[str], ee_frame_name: str):
-    full_model = pin.buildModelFromUrdf("robot.urdf")
+    full_model = pin.buildModelFromUrdf("/home/pib/pib-sdk/src/pib_sdk/robot.urdf")
 
     # Alle Joints die NICHT zum Arm gehören werden auf 0 fixiert
     joints_to_lock = [
