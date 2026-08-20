@@ -4,37 +4,57 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pib-sdk"
-version = "1.1"
-description = "Forward & inverse kinematics helpers for pib's robot arms"
+version = "0.4"
+description = "SDK to control pib humanoid robot via rosbridge and solve its kinematics with Pinocchio from the official URDF"
 readme = "README.md"
 requires-python = ">=3.9"
-license = {file = "LICENSE"}
+license = { file = "LICENSE" }
 
 authors = [
-  {name = "pib.rocks", email = "team@pib.rocks"}
+  { name = "pib.rocks", email = "team@pib.rocks" },
 ]
 
 dependencies = [
-  "roboticstoolbox-python>=1.1.1",
-  "spatialmath-python>=1.0.3",
-  "numpy >=1.17.4,<2.0"
+  "pin>=3.1",       # Pinocchio kinematics backend (pip wheels, no system deps)
+  "numpy>=1.22",
+  "roslibpy>=1.6",  # rosbridge websocket client
 ]
 
 classifiers = [
   "Programming Language :: Python :: 3",
   "License :: OSI Approved :: MIT License",
-  "Operating System :: OS Independent"
+  "Operating System :: POSIX :: Linux",
+  "Operating System :: MacOS",
+  "Operating System :: Microsoft :: Windows",
+  "Topic :: Scientific/Engineering :: Human Machine Interfaces",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest", "ruff", "build", "twine"]
+drawing = ["Pillow>=9.0"]
+
+[project.scripts]
+pib-control = "pib_sdk.control:_cli"
 
 [project.urls]
 Homepage = "https://github.com/pib-rocks/pib-sdk"
 
-[tool.setuptools]               
-package-dir = {"" = "src"}       # root of importable 
-license-files = []  
+[tool.setuptools]
+package-dir = { "" = "src" }
+license-files = []
 
-[tool.setuptools.packages.find] 
-where = ["src"]                  # scan “src/” for packages
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+pib_sdk = ["data/*.urdf"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
