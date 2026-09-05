@@ -3,6 +3,7 @@
 Public entry points:
 
 * :func:`fk` / :func:`ik` -- one-call forward and inverse kinematics for an arm.
+* :func:`get_hand_position_xyz` -- hand-tip XYZ from commanded arm joint positions.
 * :class:`ArmKinematics` / :class:`HeadKinematics` -- reusable solvers holding a
   single Pinocchio buffer.
 * :func:`camera_pose` -- pose of the head camera for a given pan/tilt.
@@ -366,6 +367,57 @@ def fk(side: ArmSide | str, q_deg: Iterable[float]) -> pin.SE3:
     >>> pose.translation  # palm position in mm
     """
     return ArmKinematics(side).forward(q_deg)
+
+
+def get_hand_position_xyz(
+    side: ArmSide | str,
+    *,
+    telemetry_host: str = "localhost",
+    telemetry_port: int = 9090,
+    telemetry=None,
+) -> tuple[float, float, float]:
+    """Return the hand-tip XYZ of one arm from currently commanded joint positions.
+
+    Joint positions are read in **degrees**. The returned ``(x, y, z)`` is in
+    **millimetres** in pib's base frame (the translation of
+    :meth:`ArmKinematics.forward`).
+
+    Joints are read via the SDK's position reader and reflect the last
+    **commanded** position, not live encoder feedback. A stalled or
+    hand-moved joint is therefore not detected.
+
+    Parameters
+    ----------
+    side:
+        ``"left"`` or ``"right"`` (or :class:`~pib_sdk.robot_model.ArmSide`).
+    telemetry_host, telemetry_port:
+        Used only when ``telemetry`` is omitted, to construct a
+        :class:`~pib_sdk.telemetry.Telemetry` client.
+    telemetry:
+        Optional position source. If given, the caller owns its lifecycle
+        (used by offline tests to inject a fake). If omitted, a client is
+        opened and closed inside this call.
+    """
+    arm = ArmKinematics(side)
+
+    def xyz_from(source) -> tuple[float, float, float]:
+        positions = source.get_positions_deg(arm.motor_names)
+        missing = [name for name in arm.motor_names if name not in positions]
+        if missing:
+            raise KeyError(
+                f"Missing motor position for {missing[0]!r}; "
+                f"needed motors {list(arm.motor_names)}"
+            )
+        q = [positions[m] for m in arm.motor_names]
+        pose = arm.forward(q)
+        return tuple(pose.translation)
+
+    if telemetry is None:
+        from pib_sdk.telemetry import Telemetry
+
+        with Telemetry(host=telemetry_host, port=telemetry_port) as owned:
+            return xyz_from(owned)
+    return xyz_from(telemetry)
 
 
 def ik(
