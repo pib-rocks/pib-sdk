@@ -34,6 +34,7 @@ from pib_sdk.kinematics import (
     HeadKinematics,
     camera_pose,
     fk,
+    get_hand_position_xyz,
     ik,
     pose_from_xyz_rpy,
     pose_to_xyz_rpy,
@@ -59,6 +60,7 @@ __all__ = [
     # kinematics
     "fk",
     "ik",
+    "get_hand_position_xyz",
     "camera_pose",
     "ArmKinematics",
     "HeadKinematics",
