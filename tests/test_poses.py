@@ -5,12 +5,16 @@ from __future__ import annotations
 import pytest
 
 import pib_sdk.features.poses as poses_module
+from conftest import patch_roslibpy
+from pib_sdk import control
+from pib_sdk.control import Write
 from pib_sdk.features.poses import (
     Pose,
     apply_pose,
     get_pose,
     list_poses,
     play_pose_sequence,
+    play_pose_sequence_timed,
     save_current_pose,
     set_pose,
 )
@@ -44,9 +48,14 @@ class _FakeBackend:
 class _FakeWriter:
     def __init__(self):
         self.calls: list[tuple] = []
+        self.timed_calls: list[tuple[list[str], list[tuple[list[float], float]]]] = []
 
     def move(self, *args):
         self.calls.append(args)
+        return True
+
+    def send_timed_trajectory(self, joint_names, waypoints):
+        self.timed_calls.append((list(joint_names), list(waypoints)))
         return True
 
 
@@ -75,6 +84,15 @@ REST = {
     "name": "rest",
     "deletable": False,
     "motorPositions": [{"motorName": "elbow_right", "position": 0}],
+}
+REACH = {
+    "poseId": "p3",
+    "name": "reach",
+    "deletable": True,
+    "motorPositions": [
+        {"motorName": "elbow_right", "position": 0},
+        {"motorName": "wrist_right", "position": -1000},
+    ],
 }
 
 
@@ -157,6 +175,82 @@ def test_play_pose_sequence_rejects_unknown_by_value():
     writer = _FakeWriter()
     with pytest.raises(ValueError):
         play_pose_sequence(writer, backend, [("wave", 0.0)], by="pose_name")
+
+
+def test_play_pose_sequence_timed_accumulates_per_leg_seconds():
+    backend = _backend_with(WAVE, REST)
+    writer = _FakeWriter()
+
+    play_pose_sequence_timed(writer, backend, [("wave", 1.5), ("rest", 0.5)])
+
+    assert len(writer.timed_calls) == 1
+    joint_names, waypoints = writer.timed_calls[0]
+    assert joint_names == ["elbow_right"]
+    assert len(waypoints) == 2
+    assert waypoints[0] == ([4500.0], 1.5)
+    assert waypoints[1] == ([0.0], 2.0)
+    assert writer.calls == []  # must not use the naive stop-per-pose path
+
+
+def test_play_pose_sequence_timed_unions_joints_and_backfills():
+    backend = _backend_with(WAVE, REACH)
+    writer = _FakeWriter()
+
+    play_pose_sequence_timed(writer, backend, [("wave", 1.0), ("reach", 0.5)])
+
+    joint_names, waypoints = writer.timed_calls[0]
+    assert joint_names == ["elbow_right", "wrist_right"]
+    assert waypoints[0][0] == [4500.0, -1000.0]  # wrist backfilled from reach
+    assert waypoints[1][0] == [0.0, -1000.0]
+    assert waypoints[0][1] == 1.0
+    assert waypoints[1][1] == 1.5
+
+
+def test_play_pose_sequence_timed_carries_forward_missing_later_motors():
+    backend = _backend_with(REACH, WAVE)
+    writer = _FakeWriter()
+
+    play_pose_sequence_timed(writer, backend, [("reach", 0.25), ("wave", 0.75)])
+
+    joint_names, waypoints = writer.timed_calls[0]
+    assert joint_names == ["elbow_right", "wrist_right"]
+    assert waypoints[0][0] == [0.0, -1000.0]
+    assert waypoints[1][0] == [4500.0, -1000.0]  # wrist carried forward
+    assert waypoints[0][1] == 0.25
+    assert waypoints[1][1] == 1.0
+
+
+def test_play_pose_sequence_timed_rejects_unknown_by_value():
+    backend = _backend_with(WAVE)
+    writer = _FakeWriter()
+    with pytest.raises(ValueError):
+        play_pose_sequence_timed(writer, backend, [("wave", 1.0)], by="pose_name")
+
+
+def test_play_pose_sequence_timed_emits_software_trajectory_shape(monkeypatch):
+    topics, services = patch_roslibpy(monkeypatch, control)
+    writer = Write(host="localhost")
+    services["/apply_joint_trajectory"].default_response = {"successful": True}
+    backend = _backend_with(WAVE, REACH)
+
+    play_pose_sequence_timed(writer, backend, [("wave", 1.0), ("reach", 0.5)])
+
+    calls = services["/apply_joint_trajectory"].calls
+    assert len(calls) == 1
+    trajectory = calls[0]["joint_trajectory"]
+    points = trajectory["points"]
+    assert trajectory["joint_names"] == ["elbow_right", "wrist_right"]
+    assert len(points) == 2
+    assert [point["positions"] for point in points] == [
+        [4500.0, -1000.0],
+        [0.0, -1000.0],
+    ]
+    assert all(len(point["positions"]) == len(trajectory["joint_names"]) for point in points)
+    assert points[0]["time_from_start"] == {"sec": 1, "nanosec": 0}
+    assert points[1]["time_from_start"] == {"sec": 1, "nanosec": 500_000_000}
+    # Software-trajectory shape: multi-point, positions-per-joint, non-zero times.
+    assert len(points) > 1
+    assert all(point["time_from_start"] != {"sec": 0, "nanosec": 0} for point in points)
 
 
 def test_save_current_pose_reads_telemetry_and_creates_a_pose():

@@ -194,6 +194,14 @@ def _degrees_to_internal_units(position_deg: float) -> float:
     return float(round(float(position_deg) * 100.0))
 
 
+def _seconds_to_time_from_start(seconds: float) -> dict[str, int]:
+    """Convert a duration in seconds to a ROS2 ``builtin_interfaces/Duration`` dict."""
+    total_ns = int(round(float(seconds) * 1_000_000_000))
+    if total_ns < 0:
+        raise ValueError(f"time_from_start must be non-negative (got {seconds})")
+    return {"sec": total_ns // 1_000_000_000, "nanosec": total_ns % 1_000_000_000}
+
+
 def _parse_vector_move(
     args: list[str | _Token | float],
 ) -> tuple[list[str], list[float]] | None:
@@ -436,6 +444,60 @@ class Write:
         if ok and self.verify_echo:
             ok = self._await_trajectory_echo(joint_names, positions_internal)
         return ok
+
+    def send_timed_trajectory(
+        self,
+        joint_names: list[str],
+        waypoints: list[tuple[list[float], float]],
+    ) -> bool:
+        """Send a timed via-point JointTrajectory in the standard layout.
+
+        ``waypoints[i]`` is ``(positions_internal_per_joint, time_from_start_seconds)``
+        where the time is absolute from trajectory start. Each point carries one
+        position per name in ``joint_names`` plus a real ``time_from_start``, which
+        is the shape pib-backend interpolates through instead of stopping at each
+        pose. Positions are internal units (hundredths of a degree).
+        """
+        if not joint_names:
+            raise ValueError("joint_names must not be empty")
+        if not waypoints:
+            raise ValueError("waypoints must not be empty")
+
+        points: list[dict[str, Any]] = []
+        for positions_internal, time_from_start_seconds in waypoints:
+            if len(positions_internal) != len(joint_names):
+                raise ValueError("each waypoint must have one position per joint_name")
+            points.append(
+                {
+                    "positions": [float(position) for position in positions_internal],
+                    "velocities": [],
+                    "accelerations": [],
+                    "effort": [],
+                    "time_from_start": _seconds_to_time_from_start(time_from_start_seconds),
+                }
+            )
+
+        request = roslibpy.ServiceRequest(
+            {
+                "joint_trajectory": {
+                    "joint_names": list(joint_names),
+                    "points": points,
+                }
+            }
+        )
+        try:
+            response = self._joint_trajectory_service.call(request, timeout=2.5)
+            ok = bool(response.get("successful", False))
+            logger.debug(
+                "send_timed_trajectory(%s, %d waypoints) -> %s",
+                joint_names,
+                len(waypoints),
+                ok,
+            )
+            return ok
+        except Exception as error:
+            logger.error("Timed trajectory call failed: %s", error)
+            return False
 
     def _move_hand(self, action: _Token) -> bool:
         """Open or close a hand (fingers to -90 to open, +90 to close)."""

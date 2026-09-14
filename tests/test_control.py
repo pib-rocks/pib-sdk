@@ -18,6 +18,7 @@ from pib_sdk.control import (
     _expand_token,
     _parse_uniform_move,
     _parse_vector_move,
+    _seconds_to_time_from_start,
     default,
     left_arm,
     open_right_hand,
@@ -177,3 +178,50 @@ def test_hand_tokens_expose_expected_motor_names():
     names = _expand_token(right_hand)
     assert "thumb_right_opposition" in names
     assert all(name.endswith(("_stretch", "_opposition")) for name in names)
+
+
+# --------------------------------------------------------------------------- #
+# Timed via-point trajectories                                                 #
+# --------------------------------------------------------------------------- #
+def test_seconds_to_time_from_start_splits_sec_and_nanosec():
+    assert _seconds_to_time_from_start(0) == {"sec": 0, "nanosec": 0}
+    assert _seconds_to_time_from_start(1.5) == {"sec": 1, "nanosec": 500_000_000}
+    assert _seconds_to_time_from_start(2.5) == {"sec": 2, "nanosec": 500_000_000}
+
+
+def test_send_timed_trajectory_uses_standard_layout(fake_roslibpy):
+    _topics, services = fake_roslibpy
+    writer = Write(host="localhost")
+    services["/apply_joint_trajectory"].default_response = {"successful": True}
+
+    ok = writer.send_timed_trajectory(
+        ["elbow_right", "wrist_right"],
+        [([4500.0, -1000.0], 1.0), ([0.0, -500.0], 2.5)],
+    )
+
+    assert ok is True
+    trajectory = services["/apply_joint_trajectory"].calls[0]["joint_trajectory"]
+    points = trajectory["points"]
+    assert trajectory["joint_names"] == ["elbow_right", "wrist_right"]
+    assert len(points) == 2
+    assert points[0]["positions"] == [4500.0, -1000.0]
+    assert points[1]["positions"] == [0.0, -500.0]
+    assert all(len(point["positions"]) == 2 for point in points)
+    assert points[0]["time_from_start"] == {"sec": 1, "nanosec": 0}
+    assert points[1]["time_from_start"] == {"sec": 2, "nanosec": 500_000_000}
+
+
+def test_move_still_sends_legacy_one_point_per_motor(fake_roslibpy):
+    _topics, services = fake_roslibpy
+    writer = Write(host="localhost")
+    services["/apply_joint_trajectory"].default_response = {"successful": True}
+
+    writer.move("elbow_right", 45.0, "wrist_right", -10.0)
+
+    trajectory = services["/apply_joint_trajectory"].calls[0]["joint_trajectory"]
+    points = trajectory["points"]
+    assert trajectory["joint_names"] == ["elbow_right", "wrist_right"]
+    assert len(points) == 2
+    assert points[0]["positions"] == [4500.0]
+    assert points[1]["positions"] == [-1000.0]
+    assert points[0]["time_from_start"] == {"sec": 0, "nanosec": 1_000_000}
