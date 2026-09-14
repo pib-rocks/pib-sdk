@@ -123,13 +123,13 @@ def play_pose_sequence(
     *,
     by: str = "name",
 ) -> None:
-    """Move through a sequence of saved poses, holding for each given duration.
+    """Move through a sequence of saved poses, stopping and holding at each one.
 
     ``sequence`` is ``[(pose_identifier, hold_seconds), ...]``; ``by`` selects
     whether ``pose_identifier`` is a pose name (default) or a ``pose_id``.
-    There's no native pose-sequence concept in pib-backend -- Cerebra only
-    offers this via chained "move to pose" + "wait" Blockly blocks -- so this
-    simply fetches and applies each pose in order.
+    Each pose is sent as a single-point (legacy) move, so the robot stops
+    before the hold. For motion that blends through the poses, use
+    :func:`play_pose_sequence_timed`.
     """
     if by not in ("name", "pose_id"):
         raise ValueError("`by` must be 'name' or 'pose_id'")
@@ -138,6 +138,75 @@ def play_pose_sequence(
         set_pose(writer, backend, **kwargs)
         if hold_seconds > 0:
             time.sleep(hold_seconds)
+
+
+def play_pose_sequence_timed(
+    writer: Write,
+    backend: BackendClient,
+    schedule: Sequence[tuple[str, float]],
+    *,
+    by: str = "name",
+) -> None:
+    """Play saved poses as one timed via-point trajectory that blends through them.
+
+    ``schedule`` is ``[(pose_identifier, seconds_for_this_leg), ...]``. Each
+    duration is the time to reach that pose from the previous waypoint (or
+    from trajectory start, for the first pose). Those per-leg seconds are
+    summed into absolute ``time_from_start`` values. ``by`` selects whether
+    identifiers are pose names (default) or ``pose_id`` values.
+
+    ``joint_names`` is the first-seen union of motors across all poses. A
+    motor missing from a later pose keeps its previous waypoint value; a
+    motor that first appears later is backfilled into earlier waypoints with
+    its first known value, so every point carries a position for every joint.
+    """
+    if by not in ("name", "pose_id"):
+        raise ValueError("`by` must be 'name' or 'pose_id'")
+    if not schedule:
+        return
+
+    poses = []
+    for identifier, _leg_seconds in schedule:
+        kwargs = {"name": identifier} if by == "name" else {"pose_id": identifier}
+        poses.append(get_pose(backend, **kwargs))
+
+    joint_names: list[str] = []
+    seen: set[str] = set()
+    for pose in poses:
+        for motor_name in pose.motor_angles_deg:
+            if motor_name not in seen:
+                seen.add(motor_name)
+                joint_names.append(motor_name)
+    if not joint_names:
+        raise ValueError("schedule poses have no motor positions")
+
+    filled: list[dict[str, float]] = []
+    previous: dict[str, float] = {}
+    for pose in poses:
+        current = dict(previous)
+        current.update(pose.motor_angles_deg)
+        filled.append(current)
+        previous = current
+
+    first_known: dict[str, float] = {}
+    for angle_map in filled:
+        for motor_name, angle_deg in angle_map.items():
+            first_known.setdefault(motor_name, angle_deg)
+    for angle_map in filled:
+        for motor_name in joint_names:
+            angle_map.setdefault(motor_name, first_known[motor_name])
+
+    time_from_start = 0.0
+    waypoints: list[tuple[list[float], float]] = []
+    for (_identifier, leg_seconds), angle_map in zip(schedule, filled):
+        time_from_start += float(leg_seconds)
+        positions_internal = [
+            float(round(angle_map[motor_name] * _INTERNAL_UNITS_PER_DEGREE))
+            for motor_name in joint_names
+        ]
+        waypoints.append((positions_internal, time_from_start))
+
+    writer.send_timed_trajectory(joint_names, waypoints)
 
 
 def save_current_pose(
