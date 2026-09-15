@@ -1,18 +1,30 @@
 name: Publish to PyPI
 
+# Two events, one release: pushing the tag `vX.Y.Z` and publishing the GitHub release
+# both fire this workflow. Uploads are idempotent (`skip-existing`), so the second
+# run is a green no-op instead of a red "file already exists" failure.
 on:
-  release:
-    types: [published]
   push:
     tags:
       - 'v*'
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-${{ github.ref_name }}
+  cancel-in-progress: false
 
 jobs:
   publish-testpypi:
-    name: Build and publish to TestPyPI (dry-run)
+    name: Build and publish to TestPyPI (dry-run, optional)
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
+    # The dry-run must never block the real release. Without the TEST_PYPI_TOKEN
+    # secret this job cannot authenticate (gh-action-pypi-publish then falls back to
+    # trusted publishing and dies on OIDC), so it is non-blocking by design.
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
@@ -23,35 +35,57 @@ jobs:
       - name: Install build tooling
         run: python -m pip install --upgrade pip build
 
-      - name: Resolve version from tag and inject
+      - name: Resolve version from tag and verify the source tree matches
         run: |
-          if [ "${{ github.event_name }}" = "release" ]; then
+          if [ "${GITHUB_EVENT_NAME}" = "release" ]; then
             TAG="${{ github.event.release.tag_name }}"
           else
             TAG="${GITHUB_REF_NAME}"
           fi
           VERSION="${TAG#v}"
           echo "Resolved version: ${VERSION} (from tag ${TAG})"
-          sed -i "s/^version = \".*\"/version = \"${VERSION}\"/" pyproject.toml
-          sed -i "s/^__version__ = \".*\"/__version__ = \"${VERSION}\"/" src/pib_sdk/__init__.py
+          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
+          # The tag is the source of truth. Fail loudly when the committed files
+          # disagree instead of silently patching a stale version into the package.
+          if ! grep -q "^version = \"${VERSION}\"" pyproject.toml; then
+            echo "::error::pyproject.toml version does not match tag ${TAG}"
+            grep -n '^version' pyproject.toml
+            exit 1
+          fi
+          if ! grep -q "^__version__ = \"${VERSION}\"" src/pib_sdk/__init__.py; then
+            echo "::error::pib_sdk.__version__ does not match tag ${TAG}"
+            grep -n '^__version__' src/pib_sdk/__init__.py
+            exit 1
+          fi
           grep -n '^version =' pyproject.toml
           grep -n '^__version__ =' src/pib_sdk/__init__.py
 
       - name: Build sdist and wheel
         run: python -m build
 
+      - name: Check TestPyPI credentials
+        env:
+          TOKEN: ${{ secrets.TEST_PYPI_TOKEN }}
+        run: |
+          if [ -z "${TOKEN}" ]; then
+            echo "SKIP_TESTPYPI=true" >> "$GITHUB_ENV"
+            echo "::warning::TEST_PYPI_TOKEN is not set - skipping the TestPyPI dry-run. Set the secret (test.pypi.org token) to enable this job."
+          fi
+
       - name: Publish to TestPyPI
+        if: env.SKIP_TESTPYPI != 'true'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           password: ${{ secrets.TEST_PYPI_TOKEN }}
           repository-url: https://test.pypi.org/legacy/
+          skip-existing: true
 
   build-and-publish:
     name: Build and publish to PyPI
     needs: publish-testpypi
+    # `always()`: the TestPyPI dry-run is informational, it must not gate the release.
+    if: always()
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -62,24 +96,45 @@ jobs:
       - name: Install build tooling
         run: python -m pip install --upgrade pip build
 
-      - name: Resolve version from tag and inject
+      - name: Resolve version from tag and verify the source tree matches
         run: |
-          if [ "${{ github.event_name }}" = "release" ]; then
+          if [ "${GITHUB_EVENT_NAME}" = "release" ]; then
             TAG="${{ github.event.release.tag_name }}"
           else
             TAG="${GITHUB_REF_NAME}"
           fi
           VERSION="${TAG#v}"
           echo "Resolved version: ${VERSION} (from tag ${TAG})"
-          sed -i "s/^version = \".*\"/version = \"${VERSION}\"/" pyproject.toml
-          sed -i "s/^__version__ = \".*\"/__version__ = \"${VERSION}\"/" src/pib_sdk/__init__.py
+          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
+          if ! grep -q "^version = \"${VERSION}\"" pyproject.toml; then
+            echo "::error::pyproject.toml version does not match tag ${TAG}"
+            grep -n '^version' pyproject.toml
+            exit 1
+          fi
+          if ! grep -q "^__version__ = \"${VERSION}\"" src/pib_sdk/__init__.py; then
+            echo "::error::pib_sdk.__version__ does not match tag ${TAG}"
+            grep -n '^__version__' src/pib_sdk/__init__.py
+            exit 1
+          fi
           grep -n '^version =' pyproject.toml
           grep -n '^__version__ =' src/pib_sdk/__init__.py
 
       - name: Build sdist and wheel
         run: python -m build
+
+      - name: Require the PyPI token
+        env:
+          TOKEN: ${{ secrets.PYPI_TOKEN }}
+        run: |
+          if [ -z "${TOKEN}" ]; then
+            echo "::error::PYPI_TOKEN secret is missing or empty - refusing to publish. Add a pypi.org API token as the repository secret PYPI_TOKEN."
+            exit 1
+          fi
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           password: ${{ secrets.PYPI_TOKEN }}
+          # Idempotent: the tag push and the release publication trigger this workflow
+          # twice for the same version.
+          skip-existing: true
