@@ -8,11 +8,16 @@ the voice assistant, and more.
 Positions are in **millimetres**, joint angles in **degrees**, and orientations
 as **roll–pitch–yaw** (see [Conventions](#conventions)).
 
-**Full API reference:** [docs/REFERENCE.md](docs/REFERENCE.md) covers every
-module below in detail, including caveats worth knowing before you rely on
-them (e.g. what "position" telemetry actually means, what RGB buttons can
-and can't do). This README is a quick-start for the core four; everything
-else is one import away.
+## Documentation
+
+This README is the entry point. Continue with:
+
+| Document | Use it for |
+|---|---|
+| **[API reference](docs/REFERENCE.md)** | Signatures, parameters, return values, exceptions, units, and backend caveats for all 155 public API elements |
+| **[Tutorials](docs/TUTORIALS.md)** | Guided tasks from first connection through IK, poses, depth vision, drawing, programs, buttons, display, and relay |
+| **[Runnable examples](docs/EXAMPLES.md)** | An index of scripts under [`examples/`](examples/) and whether each needs a live robot |
+| **[Architecture](docs/ARCHITECTURE.md)** | Call-flow diagrams for rosbridge, REST, kinematics, programs, poses, and telemetry |
 
 ---
 
@@ -37,6 +42,58 @@ flowchart LR
 Full control-flow diagrams — the voice assistant call sequence, the Blockly
 program proxy, the kinematics/Pinocchio layering, telemetry pull-vs-push —
 live in **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
+
+---
+
+## Concepts
+
+### Two equal clients
+
+Cerebra and pib-sdk are peers. A change made through either client reaches
+the same robot-side services and persisted resources. The SDK does not
+automate the Cerebra UI or duplicate its assistant, pose, or program logic.
+
+### Connection and lifecycle model
+
+Use one host name for a robot, normally `pib.local`. Real-time APIs connect to
+rosbridge (`9090`); persisted Cerebra data uses pib-backend HTTP (`5000`).
+Each live client (`Write`, `Speak`, `Telemetry`, `Camera`, and so on) owns its
+own rosbridge WebSocket and should be closed or used as a context manager.
+
+`Robot` is a convenient lifecycle/configuration bundle. It constructs
+`Write`, `Speak`, and `Telemetry` once each and exposes one stateless
+`BackendClient`; it does **not** multiplex those clients over one WebSocket.
+Create only the specialized client you need when connection count matters.
+
+### Motor selectors and names
+
+`Write` accepts literal firmware motor names such as `"elbow_right"` and
+selector tokens such as `right_arm`, `left_hand`, `head`, and `All`. Group
+tokens expand locally, in a stable order, without querying the backend.
+`Write.move(group, angle)` applies one angle to all selected motors;
+`Write.move(group, *angles)` consumes one angle per expanded motor. Hand
+action tokens (`open_right_hand`, etc.) are complete actions and take no
+angle. See [Joint ↔ motor names](#joint--motor-names).
+
+### Units and conventions
+
+Public movement and kinematics APIs use degrees and millimetres. The SDK
+converts motor commands to pib-backend's internal hundredths-of-a-degree
+representation at the service boundary. The exception is the low-level
+`Write.send_timed_trajectory`, whose positions are deliberately already in
+those internal units. Depth pixels are unsigned 16-bit millimetres, where
+zero means invalid.
+
+### Errors and command results
+
+Argument and model problems raise `TypeError`, `ValueError`, `KeyError`, or
+`FileNotFoundError`. Connection setup raises `ConnectionError` or
+`RuntimeError`, depending on the client; waiting APIs may raise
+`TimeoutError`. REST failures raise `BackendError`. Several live command
+methods instead return `False` on backend rejection (and `Write` also returns
+`False` after service-call failures), so check booleans when command delivery
+matters. Camera depth reads use `None`/`0.0` for unavailable data. Exact
+behavior is listed in the [API reference](docs/REFERENCE.md).
 
 ---
 
@@ -118,7 +175,7 @@ from pib_sdk import Write, ik, right_arm
 
 q_deg = ik("right", xyz=[-400, 100, 900])
 
-with Write(host="pib.local") as w:   # rosbridge on the robot (localhost by default)
+with Write(host="pib.local") as w:   # rosbridge on the robot (constructor default: localhost)
     w.move(right_arm, *q_deg)        # one angle per joint, in order
 ```
 
@@ -160,10 +217,11 @@ This is forward kinematics for the head/camera frame — not to be confused
 with `pib_sdk.features.camera`, which fetches an actual JPEG snapshot; see
 [docs/REFERENCE.md](docs/REFERENCE.md#pib_sdkfeaturescamera).
 
-### Everything else: one connection, one import
+### Everything else: one configured bundle
 
 `Robot` bundles motor control, speech, telemetry, and pib-backend's REST API
-behind a single host, so you don't reconnect four times:
+behind a single host and context manager. The three live clients retain their
+own rosbridge connections:
 
 ```python
 from pib_sdk import right_arm
@@ -184,7 +242,7 @@ with Robot(host="pib.local") as robot:
 | Drive to / save poses created in Cerebra | `pib_sdk.features.poses` |
 | Run or stop a Blockly program saved in Cerebra | `pib_sdk.features.programs` |
 | See/change which program an RGB button triggers | `pib_sdk.features.buttons` |
-| Grab a camera snapshot | `pib_sdk.features.camera` |
+| Grab a camera snapshot or millimetre depth data | `pib_sdk.features.camera` |
 | Drive the voice assistant: state, chats, personalities | `pib_sdk.features.assistant` |
 | Push an image to pib's screen | `pib_sdk.features.display` |
 | Read/set the solid-state relay | `pib_sdk.features.relay` |
@@ -194,6 +252,7 @@ with Robot(host="pib.local") as robot:
 > see [Two equal clients](docs/ARCHITECTURE.md#two-equal-clients-not-a-client-and-a-fallback).
 
 Details, caveats, and full examples for each: **[docs/REFERENCE.md](docs/REFERENCE.md)**.
+For guided workflows, continue with **[docs/TUTORIALS.md](docs/TUTORIALS.md)**.
 
 ---
 
@@ -255,9 +314,11 @@ python -m pib_sdk.robot_model
 | `restarts` | `50` | Random in-limit restarts if the first solve misses. |
 | `respect_limits` | `True` | Keep the solution within mechanical joint limits. |
 
-With `respect_limits=True` (the default) any returned solution is guaranteed to
-be within joint limits and therefore safe to send to `Write.move`. IK raises
-`ValueError` if it cannot reach the target.
+With `respect_limits=True` (the default), a returned solution is within the
+loaded URDF's joint limits. `Write.move` separately accepts only `[-90, 90]°`
+and can still return `False` if the backend rejects a command; verify custom
+URDF limits against the real robot. IK raises `ValueError` if it cannot reach
+the target.
 
 ---
 
@@ -290,6 +351,9 @@ pip install -e ".[dev]"
 pytest          # run the test suite
 ruff check src tests
 ruff format src tests
+python tools/check_doc_coverage.py
+python tools/check_doc_links.py
+python tools/check_examples.py
 python -m build # build the sdist and wheel
 ```
 

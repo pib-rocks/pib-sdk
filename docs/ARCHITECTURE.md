@@ -85,8 +85,10 @@ two servers on the robot:
 | rosbridge | 9090 | WebSocket (JSON) | real-time: motor commands, telemetry, live assistant/program control |
 | pib-backend | 5000 | HTTP (REST/JSON) | durable data: poses, programs, button bindings, settings, personalities, chats |
 
-`pib_sdk.robot.Robot` exists purely to hold one connection to each so a
-script doesn't reconnect four times — see the README.
+`pib_sdk.robot.Robot` centralizes the host, ports, and lifecycle. In the
+current implementation its `Write`, `Speak`, and `Telemetry` children each
+own a separate rosbridge WebSocket; `BackendClient` opens HTTP requests as
+needed. It does not multiplex a single connection.
 
 ---
 
@@ -150,7 +152,7 @@ flowchart TD
 | # | Pattern | Code shape | Used by |
 |---|---|---|---|
 | 1 | REST | `self._request("GET", "/pose")` → immediate JSON | `BackendClient` (poses, programs, buttons, motors, camera settings, personalities, chats) |
-| 2 | ROS2 service call | `service.call(roslibpy.ServiceRequest({...}), timeout=...)` → blocks for one response | `Write.set`/`Write.move` (`/apply_motor_settings`, `/apply_joint_trajectory`), `Telemetry.get_position_deg` (`get_joint_position`), `Programs.start`/`stop` (`proxy_run_program_start/stop`), `Assistant.*` (all four assistant services), `Camera.get_snapshot_bytes` (`get_camera_image`), `Relay.set` (`set_solid_state_relay_state`) |
+| 2 | ROS2 service call | `service.call(roslibpy.ServiceRequest({...}), timeout=...)` → blocks for one response | `Write.set`/`Write.move`/`Write.send_timed_trajectory` (`/apply_motor_settings`, `/apply_joint_trajectory`), `Speak.say` (`play_audio_from_speech`), `Telemetry.get_position_deg` (`get_joint_position`), `Programs.start`/`stop` (`proxy_run_program_start/stop`), `Assistant.*` (all four assistant services), `Camera.get_snapshot_bytes`/`get_depth_frame`/`get_distance_at_px` (camera services), `Relay.set` (`set_solid_state_relay_state`) |
 | 3a | ROS2 topic, publish | `topic.publish(roslibpy.Message({...}))` → no response | `Display.show_*`/`clear` (`display_image`) — the **only** fire-and-forget publish in this SDK |
 | 3b | ROS2 topic, subscribe | `topic.subscribe(callback)` → callback fires per message, forever until unsubscribed | `Telemetry.subscribe_current`/`get_current_ma` (`motor_current`), `Programs.run` (`proxy_run_program_feedback/result/status`), `Relay.get_state`/`subscribe` (`solid_state_relay_state`), `Write`'s opt-in `verify_echo` (`/joint_trajectory`, `/motor_settings`) |
 
@@ -403,7 +405,7 @@ sequenceDiagram
     participant W as Write
     participant RB as rosbridge
 
-    Note over U,W: set_pose() / play_pose_sequence()
+    Note over U,W: set_pose() / play_pose_sequence() stop-and-hold path
     U->>BE: GET /pose/by-name/{name}
     BE-->>U: {poseId, motorPositions: [{motorName, position}, ...]}
     U->>W: move(motor_name, angle_deg, ...)
@@ -417,10 +419,30 @@ sequenceDiagram
     BE-->>U: {poseId, name, deletable}
 ```
 
-`play_pose_sequence` is just this loop repeated with a `time.sleep` between
-poses — Cerebra itself only offers pose sequencing via chained "move to
-pose" + "wait" Blockly blocks, so there's no richer primitive to call
-underneath.
+`play_pose_sequence` repeats this loop with a `time.sleep` between poses and
+therefore stops at each pose. `play_pose_sequence_timed` instead fetches the
+poses, unions their motor names, converts each per-leg duration into
+cumulative `time_from_start`, and sends one multi-point trajectory:
+
+```mermaid
+sequenceDiagram
+    participant U as Your script
+    participant P as features.poses
+    participant BE as pib-backend REST
+    participant W as Write
+    participant TC as software trajectory controller
+
+    U->>P: play_pose_sequence_timed([(pose, leg_seconds), ...])
+    loop each saved pose
+        P->>BE: fetch pose and motor positions
+        BE-->>P: angles in internal units
+    end
+    P->>P: union motors, fill missing values,<br/>accumulate absolute times
+    P->>W: send_timed_trajectory(joints, waypoints)
+    W->>TC: one multi-point JointTrajectory
+    TC->>TC: monotone cubic Hermite interpolation
+    Note over TC: blends through via-points
+```
 
 ---
 
