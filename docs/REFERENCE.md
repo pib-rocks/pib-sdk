@@ -1,8 +1,8 @@
 # pib-sdk reference
 
-Full detail on everything beyond the [README](../README.md)'s quick-start:
-telemetry, the pib-backend REST client, the `Robot` facade, and every module
-under `pib_sdk.features`. For *how these pieces fit together* — diagrams of
+Complete API reference for pib-sdk. For task-oriented walkthroughs see the
+[tutorials](TUTORIALS.md), and for complete scripts see the
+[examples index](EXAMPLES.md). For *how these pieces fit together* — diagrams of
 the trickier control flows (the voice assistant, Blockly programs, the
 kinematics/Pinocchio layering) — see **[docs/ARCHITECTURE.md](ARCHITECTURE.md)**.
 
@@ -19,6 +19,10 @@ Two things are true of every module here:
 
 ## Contents
 
+- [`pib_sdk.control`](#pib_sdkcontrol) — motor settings, movement, and timed trajectories
+- [`pib_sdk.kinematics`](#pib_sdkkinematics) — forward/inverse kinematics
+- [`pib_sdk.robot_model`](#pib_sdkrobot_model) — URDF chain definitions and Pinocchio models
+- [`pib_sdk.speech`](#pib_sdkspeech) — text-to-speech
 - [`pib_sdk.telemetry`](#pib_sdktelemetry) — motor position/current readback
 - [`pib_sdk.backend`](#pib_sdkbackend) — low-level REST client
 - [`pib_sdk.robot`](#pib_sdkrobot) — bundles the four core clients
@@ -30,6 +34,268 @@ Two things are true of every module here:
 - [`pib_sdk.features.assistant`](#pib_sdkfeaturesassistant) — voice assistant
 - [`pib_sdk.features.display`](#pib_sdkfeaturesdisplay) — pib's screen
 - [`pib_sdk.features.relay`](#pib_sdkfeaturesrelay) — solid-state relay
+
+---
+
+## `pib_sdk.control`
+
+`Write` controls motors through rosbridge services. Construction immediately
+connects; `Write(host="localhost", port=9090, joint_trajectory_service="/apply_joint_trajectory",
+motor_settings_service="/apply_motor_settings",
+joint_trajectory_topic="/joint_trajectory",
+motor_settings_topic="/motor_settings", debug=False)` raises
+`ConnectionError` if rosbridge is not connected within five seconds. Use
+`with Write(...) as writer:` or call `close()`. `close() -> None` suppresses
+shutdown errors and is safe to call repeatedly.
+
+### Selectors, actions, and settings
+
+Selectors are either literal firmware motor-name strings or exported tokens.
+They expand locally; no connection or backend lookup is involved.
+
+| Token | Expansion or meaning |
+|---|---|
+| `All` | Sorted union of all known arm, hand, and head motor names |
+| `right_arm`, `left_arm` | Six arm motors, base-to-tip IK order |
+| `right_hand`, `left_hand` | Six finger motors |
+| `head` | `turn_head_motor`, `tilt_forward_motor` |
+| `open_left_hand`, `open_right_hand` | Move all six motors of that hand to −90° |
+| `close_left_hand`, `close_right_hand` | Move all six motors of that hand to +90° |
+| `default` | Ask `set` to merge `DEFAULT_SETTINGS` |
+| `zero_position` | Integer `0`, for explicit zero-degree moves |
+
+`DEFAULT_SETTINGS` enables and exposes a motor and supplies the current
+velocity, acceleration, deceleration, pulse-width, period, and ±9000 internal
+rotation-range defaults. Those setting values are passed through unchanged;
+only `move` converts public degrees to hundredths of a degree.
+
+#### `Write.set`
+
+`set(*motor_specs: str | token, verify_echo: bool = False,
+echo_timeout: float = 1.0, **settings) -> bool`
+
+Applies settings to each expanded motor. With no selector it selects `All`.
+Place `default` last or pass `default=True` to merge `DEFAULT_SETTINGS`
+under explicit keywords. Supported backend fields include `turned_on`,
+`visible`, `invert`, `velocity`, `acceleration`, `deceleration`,
+`pulse_width_min`, `pulse_width_max`, `period`, `rotation_range_min`, and
+`rotation_range_max`; `None` and `position` are omitted.
+
+The return is `True` only when all motors report settings applied or
+persisted. Service errors are logged and become `False`. If the service
+reports failure and `verify_echo=True`, an observed matching settings echo
+can make that motor successful. Unsupported selector types raise `TypeError`;
+unknown private token objects can raise `ValueError`.
+
+```python
+from pib_sdk import All, Write, default, left_hand
+
+with Write(host="pib.local") as writer:
+    assert writer.set(All, default)
+    writer.set(left_hand, velocity=6000, invert=False)
+```
+
+#### `Write.move`
+
+`move(*args: str | token | int | float) -> bool`
+
+Angles are degrees in the inclusive range `[-90, 90]`. Uniform mode
+(`move(right_arm, -20)`) applies the trailing angle to every selector.
+Vector mode (`move(right_arm, a, b, c, d, e, f)`) consumes one angle per
+expanded motor; literal names may be interleaved with values. A lone hand
+action token opens or closes that hand. The method sends one batched request
+and, if rejected, retries each joint separately.
+
+It returns the backend success flag; service errors are logged and return
+`False`. Missing arguments or motors and out-of-range angles raise
+`ValueError`; malformed or unsupported arguments raise `TypeError`.
+`writer.verify_echo = True` enables best-effort trajectory echo checking,
+which is non-fatal if no echo arrives.
+
+#### `Write.send_timed_trajectory`
+
+`send_timed_trajectory(joint_names: list[str],
+waypoints: list[tuple[list[float], float]]) -> bool`
+
+This is the low-level smooth-motion API. Each waypoint is
+`(positions_internal_per_joint, time_from_start_seconds)`. Unlike `move`,
+positions are already in pib's internal **hundredths of a degree**. Every
+positions list must match `joint_names`; times are absolute from trajectory
+start, not per-leg durations. Supply non-negative, increasing times. Each is
+converted to ROS `Duration {sec, nanosec}`.
+
+The current pib-backend software trajectory controller blends through
+multi-point trajectories using monotone cubic Hermite interpolation, so
+intermediate points are via-points rather than stop-and-hold commands.
+The method returns the service success flag and returns `False` on a service
+exception. Empty names/waypoints, mismatched position counts, or negative
+times raise `ValueError`. The SDK does not itself reject equal or decreasing
+non-negative times; callers should not send them.
+
+```python
+with Write(host="pib.local") as writer:
+    writer.send_timed_trajectory(
+        ["elbow_right", "wrist_right"],
+        [([0.0, 0.0], 1.0), ([4500.0, -1000.0], 2.5)],
+    )
+```
+
+### Command-line entry point
+
+Installation provides `pib-control` (equivalent to
+`python -m pib_sdk.control`):
+
+```bash
+pib-control --host pib.local move right_arm 0 20 0 45 0 0
+pib-control --host pib.local set All --use-default
+pib-control --host pib.local set wrist_right --velocity 6000
+```
+
+The `move` command follows the same token/name modes as `Write.move`.
+`set` accepts boolean flags, motion settings, pulse widths, and
+`--min-deg`/`--max-deg`; despite those two CLI option names, the current code
+forwards their numeric values directly as `rotation_range_min/max` without
+degree conversion.
+
+---
+
+## `pib_sdk.kinematics`
+
+All angles are degrees, translations are millimetres in pib's base frame, and
+poses are real `pinocchio.SE3` objects. RPY means `[roll, pitch, yaw]` in
+degrees with `Rz(yaw) @ Ry(pitch) @ Rx(roll)`.
+
+### Pose conversion
+
+| API | Signature and behavior |
+|---|---|
+| `pose_from_xyz_rpy` | `(xyz: Sequence[float], rpy_deg: Sequence[float] | None = None) -> pin.SE3`; builds a pose. `xyz` must contain three values (`ValueError` otherwise). An RPY sequence must unpack to three values. |
+| `pose_to_xyz_rpy` | `(pose: pin.SE3) -> tuple[np.ndarray, np.ndarray]`; returns copied XYZ millimetres and RPY degrees. Attribute/type errors from an invalid pose propagate. |
+
+### `ChainKinematics`
+
+`ChainKinematics(chain: ChainModel)` reuses one mutable Pinocchio data buffer
+for a chain. Do not share one instance across concurrent solver calls.
+
+| Member | Type / purpose |
+|---|---|
+| `degrees_of_freedom` | `int`; number of configuration values |
+| `joint_names` | `list[str]`; copied URDF names in vector order |
+| `motor_names` | `list[str]`; copied firmware names in the same order |
+| `joint_limits_deg` | `(lower: np.ndarray, upper: np.ndarray)` in degrees |
+| `named_configuration(name: str)` | `np.ndarray` degrees; raises `KeyError` with available names if unknown |
+| `forward(joint_angles_deg: Iterable[float])` | `pin.SE3`; raises `ValueError` unless the vector length equals the DOF |
+
+`inverse(xyz, rpy_deg=None, initial_guess_deg=None, tolerance=1e-4,
+max_iterations=200, mask=None, restarts=50, respect_limits=True) ->
+np.ndarray` solves IK and returns degrees. `xyz` is three millimetre
+coordinates. Omitting RPY selects position-only IK; supplying it selects all
+six pose-error components. `mask` overrides that choice with six truthy/falsy
+entries ordered `[x, y, z, rx, ry, rz]`. `tolerance` is the norm threshold,
+`max_iterations` applies to each attempt, and `restarts` is the number of
+deterministic random in-limit seeds after the initial guess.
+
+With `respect_limits=True`, only an in-limit solution is returned.
+`ValueError` is raised for malformed XYZ/RPY/mask input, wrong vector sizes,
+or non-convergence. Numeric conversion and linear-algebra errors can
+propagate for invalid numeric values.
+
+`ArmKinematics(side: ArmSide | str = ArmSide.RIGHT)` selects a cached arm
+model. Invalid strings raise `ValueError`. `HeadKinematics()` selects the
+two-joint camera chain; its
+`camera_pose(pan_deg: float = 0, tilt_deg: float = 0) -> pin.SE3` is forward
+kinematics for `turn_head_motor` then `tilt_forward_motor`.
+
+### Convenience functions and compatibility classes
+
+| API | Signature, return, and errors |
+|---|---|
+| `fk` | `(side: ArmSide | str, q_deg: Iterable[float]) -> pin.SE3`; one-call arm FK; same errors as `ArmKinematics.forward`. |
+| `ik` | `(side, *, xyz, rpy_deg=None, **solver_options) -> np.ndarray`; forwards options and errors to `ChainKinematics.inverse`. |
+| `camera_pose` | `(pan_deg=0.0, tilt_deg=0.0) -> pin.SE3`; one-call head FK. |
+| `get_hand_position_xyz` | `(side, *, telemetry_host="localhost", telemetry_port=9090, telemetry=None) -> tuple[float, float, float]`; reads the six last-commanded motor angles and returns hand-tip XYZ in mm. It owns a temporary `Telemetry` only when none is supplied. Raises `KeyError` for missing readings plus connection/service/model errors. This is not encoder feedback. |
+| `FK` | `(side=ArmSide.RIGHT)` compatibility wrapper. `pose(q_deg) -> pin.SE3` calls arm FK; `joint_names` is captured at construction. |
+| `IK` | `(side=ArmSide.RIGHT)` compatibility wrapper. `solve(xyz, rpy_deg=None, q0_deg=None, tol=1e-4, max_steps=100, custom_mask=None) -> np.ndarray` maps old option names to `inverse`; errors propagate. |
+
+```python
+from pib_sdk import ArmKinematics
+
+arm = ArmKinematics("right")
+q_deg = arm.inverse([-400, 100, 900])
+print(arm.motor_names, arm.forward(q_deg).translation)
+```
+
+---
+
+## `pib_sdk.robot_model`
+
+This module loads the bundled V3 URDF through Pinocchio, locks unrelated
+joints, and scales fixed translations from metres to millimetres.
+
+`ArmSide` is a string enum with `RIGHT = "right"` and `LEFT = "left"`.
+`coerce_arm_side(side: ArmSide | str) -> ArmSide` accepts case-insensitive
+strings and raises `ValueError` for anything else.
+
+`ChainDefinition(name: str, urdf_joint_names: tuple[str, ...],
+motor_names: tuple[str, ...], tip_frame: str,
+named_configurations_deg: Mapping[str, tuple[float, ...]] = {})` is an
+immutable dataclass. Construction raises `ValueError` if motor/joint lengths
+or named-configuration lengths differ. Exported definitions are `RIGHT_ARM`,
+`LEFT_ARM`, and `HEAD`.
+
+`ChainModel(definition: ChainDefinition, model: pin.Model,
+tip_frame_id: int)` is the immutable loaded model:
+
+| Member | Return / meaning |
+|---|---|
+| `degrees_of_freedom` | `int` (`model.nq`) |
+| `joint_names` | `tuple[str, ...]`, URDF order |
+| `motor_names` | `tuple[str, ...]`, matching firmware order |
+| `joint_lower_limits`, `joint_upper_limits` | copied `np.ndarray` values in radians |
+| `joint_limits_deg` | pair of copied arrays converted to degrees |
+| `named_configuration_deg(name)` | copied `np.ndarray` degrees; `KeyError` if absent |
+| `create_data()` | fresh `pinocchio.Data`; each solver/caller should own one |
+
+`build_chain_model(definition, urdf_path: str | Path | None = None) ->
+ChainModel` builds an uncached reduced model. It raises `FileNotFoundError`
+for a missing URDF and `ValueError` for missing joints/frame, unexpected
+order, or non-single-axis chain joints; Pinocchio parse errors propagate.
+
+`get_chain_model(definition) -> ChainModel` caches by definition name and
+resolved URDF path. `get_arm_model(side) -> ChainModel` selects `RIGHT_ARM`
+or `LEFT_ARM`; `get_head_model() -> ChainModel` selects `HEAD`.
+`set_urdf_path(urdf_path: str | Path) -> None` writes `PIB_URDF_PATH` and
+clears both caches. The environment variable is also honored directly.
+
+```python
+from pib_sdk.robot_model import RIGHT_ARM, build_chain_model
+
+chain = build_chain_model(RIGHT_ARM, "/path/to/pib.urdf")
+print(chain.joint_names, chain.joint_limits_deg)
+```
+
+---
+
+## `pib_sdk.speech`
+
+`Speak(host="localhost", port=9090, debug=False,
+service_name="play_audio_from_speech",
+service_type="datatypes/PlayAudioFromSpeech", connect_timeout=10.0)`
+connects immediately and raises `RuntimeError` if rosbridge is unavailable.
+Use a context manager or `close() -> None`; close suppresses shutdown errors.
+The backwards-compatible alias `speak` names the same class.
+
+`say(text: str, *, voice: str | None = None, gender: str | None = None,
+language: str | None = None, join: bool = True, timeout: float = 30.0) ->
+dict[str, Any]` blocks for the speech service response. Presets are Hannah
+(Female/German), Daniel (Male/German), Emma (Female/English, default), and
+Brian (Male/English). A preset wins over explicit gender/language. If both
+explicit values are not supplied, it falls back to Emma. `join` is passed to
+the service.
+
+Empty text or an unknown preset raises `ValueError`; a closed connection or
+service error raises `RuntimeError`; no callback before the timeout raises
+`TimeoutError`. Otherwise the raw response dictionary is returned.
 
 ---
 
@@ -68,6 +334,20 @@ telemetry.close()
 > topic) — see the diagram at
 > [docs/ARCHITECTURE.md § telemetry](ARCHITECTURE.md#deep-dive-telemetry--pull-vs-push).
 
+`Telemetry(host="localhost", port=9090,
+get_position_service="get_joint_position",
+motor_current_topic="motor_current")` connects immediately and raises
+`ConnectionError` after five seconds. It owns a background current
+subscription. Use a context manager or `close() -> None`.
+
+| Method | Parameters and return | Errors |
+|---|---|---|
+| `get_position_deg(motor_name, timeout=5.0)` | motor firmware name; returns last commanded `float` degrees | `ValueError` if rejected; service exceptions propagate |
+| `get_positions_deg(motor_names, timeout=5.0)` | iterable of names; sequentially returns `dict[str, float]` | first per-motor error propagates |
+| `get_current_ma(motor_name, timeout=2.0)` | waits for and returns cached `int` milliamps | `TimeoutError` if unseen |
+| `subscribe_current(callback)` | registers `callback(name: str, current_ma: int) -> None` | callback exceptions occur on the topic callback thread |
+| `unsubscribe_current(callback)` | removes the callback if present; returns `None` | no error if absent |
+
 ---
 
 ## `pib_sdk.backend`
@@ -102,9 +382,27 @@ raw REST shape, or for a route this SDK doesn't wrap yet.
 
 Errors (unreachable host, non-2xx response) raise `pib_sdk.backend.BackendError`
 with the HTTP status and response body, or the underlying connection error.
+Malformed JSON raises `json.JSONDecodeError`; absent response keys raise
+`KeyError`.
 
-Note: motor **settings** here are the same fields `Write.set()` sends
-(`turnedOn`, `velocity`, `invert`, ...) — this is REST-based configuration
+`BackendClient(host="localhost", port=5000, timeout=10.0)` stores a base URL;
+it opens an HTTP request only when a method is called and has no `close`.
+All identifiers and names are URL-quoted. Complete signatures and raw JSON
+returns:
+
+| Methods | Signatures and return values |
+|---|---|
+| Poses | `list_poses() -> list[dict]`; `get_pose_by_name(name: str) -> dict`; `get_motor_positions(pose_id: str) -> list[dict]`; `create_pose(name: str, motor_positions: list[dict]) -> dict`; `rename_pose(pose_id: str, name: str) -> dict`; `update_motor_positions(pose_id: str, motor_positions: list[dict]) -> dict`; `delete_pose(pose_id: str) -> None` |
+| Programs | `list_programs() -> list[dict]`; `get_program(program_number: str) -> dict`; `create_program(name: str) -> dict`; `rename_program(program_number: str, name: str) -> dict`; `delete_program(program_number: str) -> None`; `get_program_code(program_number: str) -> str`; `set_program_code(program_number: str, code_visual: str) -> None` |
+| Buttons | `list_button_programs() -> list[dict]`; `set_button_programs(updates: list[dict]) -> list[dict]`, where each update has `brickletNumber` and nullable `programNumber` |
+| Motors | `list_motors() -> list[dict]`; `get_motor_settings(name: str) -> dict`; `update_motor_settings(name: str, settings: dict) -> dict` |
+| Camera | `get_camera_settings() -> dict`; `update_camera_settings(settings: dict) -> dict` |
+| Personalities | `list_personalities() -> list[dict]`; `get_personality(personality_id: str) -> dict`; `create_personality(personality: dict) -> dict`; `update_personality(personality_id: str, personality: dict) -> dict`; `delete_personality(personality_id: str) -> None` |
+| Chats | `list_chats() -> list[dict]`; `get_chat(chat_id: str) -> dict`; `get_chat_messages(chat_id: str) -> list[dict]`; `create_chat(topic: str, personality_id: str) -> dict`; `delete_chat(chat_id: str) -> None` |
+
+Note: `update_motor_settings` forwards the supplied dictionary unchanged.
+Use the backend field spelling represented by the current SDK paths
+(`turned_on`, `velocity`, `invert`, ...). This is REST-based configuration
 read/write, not live telemetry; see `pib_sdk.telemetry` for that.
 
 ---
@@ -112,8 +410,9 @@ read/write, not live telemetry; see `pib_sdk.telemetry` for that.
 ## `pib_sdk.robot`
 
 `Robot` bundles `Write`, `Speak`, `Telemetry`, and `BackendClient` behind one
-`host`, since on a real robot they all point at the same machine and you'd
-otherwise construct all four separately, repeating the host every time.
+`host` and lifecycle. It constructs three separate rosbridge WebSockets, one
+for each live client; it is not a connection multiplexer. `BackendClient`
+opens stateless HTTP requests.
 
 ```python
 from pib_sdk import right_arm
@@ -127,7 +426,11 @@ with Robot(host="pib.local") as robot:
 ```
 
 `Robot(host=..., rosbridge_port=9090, backend_port=5000)` — override either
-port if non-default. Nothing here is new behavior: use the four classes
+port if non-default. Construction can raise the connection errors of any
+live child, and a later failure can leave earlier children open. Attributes
+are `write: Write`, `speak: Speak`, `telemetry: Telemetry`, and
+`backend: BackendClient`. `close() -> None` closes the three live clients.
+Nothing here is new behavior: use the four classes
 directly instead if you only need one or two, or want different hosts/ports
 for each (e.g. an SDK running somewhere other than the robot's own network).
 
@@ -159,9 +462,20 @@ with Write(host="localhost") as writer:
 `image_to_sketch` is a simple flood-fill + nearest-neighbour tracer meant for
 clean line art (sketches, logos), not a full vision pipeline — for
 photographs or dense artwork, preprocess elsewhere and build a `Sketch`
-directly from your own point lists. See the module's own docstring
-(`src/pib_sdk/features/drawing.py`) for the full API (`Stroke`, `Sketch`,
-`DrawingSurface`, `Trajectory`).
+directly from your own point lists.
+
+| API | Signature / result | Errors and notes |
+|---|---|---|
+| `Stroke` | `(points: tuple[tuple[float, float], ...])`; normalized path | `ValueError` below two points |
+| `Stroke.resampled` | `(count: int) -> list[tuple[float, float]]`; arc-length-spaced points | `ValueError` below two; a zero-length stroke repeats its first point |
+| `Sketch` | `(strokes: tuple[Stroke, ...])` | `ValueError` when empty |
+| `Sketch.point_count` | `int`; sum of source points | read-only |
+| `image_to_sketch` | `(image_path, *, threshold=128, max_size=200, min_stroke_points=4) -> Sketch` | `ImportError` without Pillow; image I/O errors propagate; `ValueError` if no ink survives |
+| `DrawingSurface` | `(pose: pin.SE3, width_mm: float, height_mm: float, lift_mm=20.0)` | immutable geometry |
+| `DrawingSurface.point_mm` | `(u: float, v: float, *, lift=False) -> np.ndarray`; maps normalized surface coordinates to base-frame mm | inputs are not range-clamped |
+| `Trajectory` | `(motor_names, side, waypoints_deg)`; `len(trajectory)` is waypoint count | immutable |
+| `Trajectory.play` | `(writer, *, rate_hz=8.0, stop=None) -> None`; sends each waypoint, sleeping `1/rate_hz`; `stop() -> bool` may cancel | zero/negative rates and writer errors propagate; ignores writer's boolean result |
+| `sketch_to_trajectory` | `(sketch, surface, side=RIGHT, *, rpy_deg=None, points_per_stroke=30, initial_guess_deg=None, ik_options=None) -> Trajectory` | skips individual IK `ValueError`s; raises `ValueError` if no point is reachable; other model/numeric errors propagate |
 
 ---
 
@@ -177,7 +491,12 @@ diagrams for both directions:
 ```python
 from pib_sdk.backend import BackendClient
 from pib_sdk.control import Write
-from pib_sdk.features.poses import set_pose, play_pose_sequence, save_current_pose
+from pib_sdk.features.poses import (
+    play_pose_sequence,
+    play_pose_sequence_timed,
+    save_current_pose,
+    set_pose,
+)
 from pib_sdk.telemetry import Telemetry
 
 backend = BackendClient(host="localhost")
@@ -185,11 +504,13 @@ writer = Write(host="localhost")
 
 set_pose(writer, backend, name="wave_hello")
 
-# A sequence of saved poses, held for the given number of seconds each --
-# there's no native "pose sequence" concept in pib-backend (Cerebra only
-# offers this via chained "move to pose" + "wait" Blockly blocks), so this
-# just fetches and applies each pose in order.
+# Stop-and-hold playback:
 play_pose_sequence(writer, backend, [("wave_hello", 1.5), ("rest", 0.0)])
+
+# Smooth playback: each number is the duration of that leg.
+play_pose_sequence_timed(
+    writer, backend, [("wave_hello", 1.5), ("rest", 0.5)]
+)
 
 # The other direction: read the robot's current commanded angles and save
 # them to Cerebra as a new pose.
@@ -202,6 +523,30 @@ back in **degrees**, converted from pib-backend's internal hundredths-of-a-
 degree units (confirmed against pib-backend's own `startup_pose_executor.py`,
 which forwards a pose's stored value straight into a joint-trajectory command
 with no scaling — same units `Write` already uses).
+
+`PoseSummary(pose_id: str, name: str, deletable: bool)` identifies a pose
+without values. `Pose(pose_id: str, name: str, deletable: bool,
+motor_angles_deg: dict[str, float])` contains angles keyed by firmware motor
+name. Both are immutable dataclasses.
+
+| Function | Signature / result | Errors and semantics |
+|---|---|---|
+| `list_poses` | `(backend) -> list[PoseSummary]` | backend/shape errors propagate |
+| `get_pose` | `(backend, *, name=None, pose_id=None) -> Pose` | exactly one selector is required (`ValueError`); an unknown ID raises `ValueError`; REST errors propagate |
+| `apply_pose` | `(writer, pose) -> bool` | sends one vector `Write.move`; its errors/result propagate |
+| `set_pose` | `(writer, backend, *, name=None, pose_id=None) -> Pose` | fetches and applies; returns the pose even if `Write.move` returns `False` |
+| `play_pose_sequence` | `(writer, backend, sequence: Sequence[tuple[str, float]], *, by="name") -> None` | each duration is a post-move hold in seconds; non-positive holds do not sleep; `by` must be `"name"` or `"pose_id"` |
+| `play_pose_sequence_timed` | `(writer, backend, schedule: Sequence[tuple[str, float]], *, by="name") -> None` | each duration is time for that leg; empty input is a no-op; invalid `by`, empty pose motor sets, negative cumulative times, and fetch errors can raise |
+| `save_current_pose` | `(telemetry, backend, name: str, motor_names: Iterable[str]) -> Pose` | reads last-commanded degrees, converts to internal units, creates and returns a pose; telemetry/REST errors propagate |
+
+`play_pose_sequence_timed` fetches all poses, creates the first-seen union of
+their motors, carries missing later motors forward, and backfills missing
+earlier motors with their first known values. It sums per-leg durations into
+absolute `time_from_start` and sends one `Write.send_timed_trajectory` call.
+The backend's software controller uses monotone cubic Hermite interpolation
+and blends through via-points. The function currently returns `None` and does
+not surface a `False` result from the writer. Use positive leg durations; the
+SDK validates only negative cumulative times at the final conversion layer.
 
 ---
 
@@ -220,9 +565,11 @@ from pib_sdk.features.programs import Programs, list_programs, emergency_stop
 from pib_sdk.backend import BackendClient
 
 backend = BackendClient(host="localhost")
-for program in list_programs(backend):
+saved_programs = list_programs(backend)
+for program in saved_programs:
     print(program.program_number, program.name)
 
+program_number = saved_programs[0].program_number
 programs = Programs(host="localhost")
 result = programs.run(program_number, on_output=print, timeout=30)
 print(result.exit_code, result.status, result.timed_out)
@@ -239,6 +586,29 @@ call on the backend.
 `Programs` instance is given) with `writer.set(All, turned_on=False)` —
 turning off every motor works regardless of what started the movement, even
 without a `Programs` instance.
+
+`ProgramSummary(program_number: str, name: str)` and
+`ProgramResult(exit_code: int | None, status: int | None, timed_out: bool,
+output: tuple[str, ...] = ())` are immutable dataclasses.
+`list_programs(backend) -> list[ProgramSummary]` converts the REST listing;
+REST and response-shape errors propagate.
+
+`Programs(host="localhost", port=9090)` connects immediately and raises
+`ConnectionError` after five seconds. Use it as a context manager or call
+`close() -> None`.
+
+| Method | Signature / result | Errors and semantics |
+|---|---|---|
+| `start` | `(program_number: str, timeout=5.0) -> str`; returns proxy goal ID | service and missing-key errors propagate |
+| `stop` | `(proxy_goal_id: str, timeout=5.0) -> None` | service errors propagate; removes local tracking |
+| `stop_all` | `(timeout=5.0) -> list[str]`; returns IDs it attempted to stop | first stop error propagates |
+| `run` | `(program_number: str, *, timeout: float | None=60.0, on_output: Callable[[str, bool], None] | None=None) -> ProgramResult` | callback receives `(content, is_stderr)`; on timeout it cancels unless already terminal; service/callback errors may propagate |
+
+`STATUS_UNKNOWN` through `STATUS_ABORTED` are integer ROS action status
+constants `0..6`; `TERMINAL_STATUSES` contains succeeded, canceled, and
+aborted. `emergency_stop(writer, programs=None) -> None` first calls
+`programs.stop_all()` when provided, then `writer.set(All,
+turned_on=False)`. It does not check the returned setting boolean.
 
 ---
 
@@ -268,12 +638,20 @@ set_button_program(backend, bricklet_number=5, program_number=program_number)
 set_button_program(backend, bricklet_number=5, program_number=None)  # unassign
 ```
 
+`ButtonBinding(bricklet_number: int, bricklet_uid: str,
+program_number: str | None)` is an immutable typed view.
+`list_button_bindings(backend) -> list[ButtonBinding]` returns all bindings.
+`set_button_program(backend, *, bricklet_number: int,
+program_number: str | None) -> list[ButtonBinding]` updates one binding and
+returns the backend's complete post-update list. Pass `None` to unassign.
+REST and malformed-response errors propagate from both functions.
+
 ---
 
 ## `pib_sdk.features.camera`
 
-A single-frame JPEG snapshot — there's no live video streaming or on-board
-vision/AI in pib-backend's camera interface, just this:
+Still JPEG snapshots and depth frames are available; there is no live video
+streaming or on-board vision/AI in this client.
 
 ```python
 from pib_sdk.features.camera import Camera
@@ -281,12 +659,29 @@ from pib_sdk.features.camera import Camera
 camera = Camera(host="localhost")
 camera.save_snapshot("frame.jpg")
 raw_bytes = camera.get_snapshot_bytes()
+depth_mm = camera.get_depth_frame()
+distance_mm = camera.get_distance_at_px(320, 240)
+camera.save_depth("depth.npy")
 camera.close()
 ```
 
 Camera *settings* (resolution, refresh rate, quality) are plain REST
 configuration on `BackendClient.get_camera_settings()` /
 `update_camera_settings()`, not part of this module.
+
+`Camera(host="localhost", port=9090, get_image_service="get_camera_image",
+get_depth_frame_service="get_depth_frame",
+get_distance_at_px_service="get_distance_at_px")` connects immediately and
+raises `ConnectionError` after five seconds. Use a context manager or
+`close() -> None`.
+
+| Method | Signature / return | Errors and missing data |
+|---|---|---|
+| `get_snapshot_bytes` | `(timeout=10.0) -> bytes`; decoded JPEG | service, base64, and missing-key errors propagate |
+| `save_snapshot` | `(path: str | Path, timeout=10.0) -> None` | snapshot and filesystem errors propagate |
+| `get_depth_frame` | `(timeout=10.0) -> np.ndarray | None`; copied `(height, width)` little-endian `uint16`, **millimetres**, encoding `16UC1`; pixel `0` is invalid | `ImportError` without numpy; service/missing/malformed payload returns `None` |
+| `get_distance_at_px` | `(x: int, y: int, timeout=10.0) -> float`; millimetres at image pixel `(x, y)` | service/malformed/missing/out-of-range/no cache returns `0.0`, which means invalid |
+| `save_depth` | `(path: str | Path, timeout=10.0) -> None`; writes numpy `.npy` preserving `uint16` millimetres | `ImportError` without numpy; `RuntimeError` if no frame; filesystem errors propagate; `np.save` may append `.npy` |
 
 ---
 
@@ -325,6 +720,34 @@ assistant.close()
 > and appends its response to the chat's message history. Poll
 > `list_chat_messages(backend, chat.chat_id)` after sending to read it.
 
+Typed immutable REST records:
+
+| Dataclass | Fields |
+|---|---|
+| `Personality` | `personality_id: str`, `name: str`, `gender: str`, `description: str | None`, `pause_threshold: float`, `message_history: int`, `assistant_model_id: int` |
+| `Chat` | `chat_id: str`, `topic: str`, `personality_id: str` |
+| `ChatMessage` | `message_id: str`, `timestamp: str`, `is_user: bool`, `content: str` |
+| `AssistantState` | `turned_on: bool`, `chat_id: str` |
+
+The typed REST helpers are `list_personalities(backend) -> list[Personality]`,
+`list_chats(backend) -> list[Chat]`, `get_chat(backend, chat_id: str) ->
+Chat`, `list_chat_messages(backend, chat_id: str) -> list[ChatMessage]`,
+`create_chat(backend, *, topic: str, personality_id: str) -> Chat`, and
+`delete_chat(backend, chat_id: str) -> None`. REST and response conversion
+errors propagate. Personality create/update/delete remain available on the
+raw `BackendClient`.
+
+`Assistant(host="localhost", port=9090)` connects immediately and raises
+`ConnectionError` after five seconds. Use a context manager or
+`close() -> None`.
+
+| Method | Signature / return | Errors |
+|---|---|---|
+| `get_state` | `(timeout=5.0) -> AssistantState` | service/malformed-response errors propagate |
+| `set_state` | `(*, turned_on: bool, chat_id: str, timeout=5.0) -> bool` | returns backend success; service errors propagate |
+| `is_listening` | `(chat_id: str, timeout=5.0) -> bool` | missing `listening` becomes `False`; service errors propagate |
+| `send_message` | `(chat_id: str, content: str, timeout=5.0) -> bool` | returns acceptance, never reply text; service errors propagate |
+
 ---
 
 ## `pib_sdk.features.display`
@@ -346,6 +769,16 @@ display.close()
 `ImageFormat` is `ANIMATED_GIF`, `PNG`, or `JPEG` — it must match the actual
 encoding of the bytes you pass to `show_custom`.
 
+`ImageFormat` is an `IntEnum` with values `0`, `1`, and `2` respectively.
+`Display(host="localhost", port=9090, display_image_topic="display_image")`
+connects immediately and raises `ConnectionError` after five seconds. Use a
+context manager or `close() -> None`.
+`show_animated_eyes() -> None` publishes the built-in animation;
+`show_custom(image_bytes: bytes, *, format: ImageFormat) -> None` base64
+encodes and publishes bytes; `clear() -> None` publishes the no-image ID.
+These are fire-and-forget and cannot report whether hardware displayed the
+image. Invalid data/format failures arise locally or in `roslibpy`.
+
 ---
 
 ## `pib_sdk.features.relay`
@@ -366,3 +799,16 @@ relay.close()
 about once a second regardless of whether it changed. What this relay
 physically switches isn't documented in pib-backend's code; confirm with the
 team before relying on it for anything safety-critical.
+
+`Relay(host="localhost", port=9090,
+set_state_service="set_solid_state_relay_state",
+state_topic="solid_state_relay_state")` connects immediately and raises
+`ConnectionError` after five seconds. Use a context manager or
+`close() -> None`.
+
+`set(turned_on: bool, timeout=5.0) -> bool` returns backend success and lets
+service errors propagate. `get_state(timeout=2.0) -> bool` returns the latest
+topic value or raises `TimeoutError`. `subscribe(callback: Callable[[bool],
+None]) -> None` registers future state callbacks; `unsubscribe(callback) ->
+None` removes one if present without error. Callback exceptions occur on the
+topic callback thread.
