@@ -8,3 +8,8 @@ rather than through this package, e.g.::
 Submodules may need an extra dependency beyond pib_sdk's core install; each
 documents its own requirement (e.g. ``pip install pib-sdk[drawing]``).
 """
+
+from .imu import IMU, IMUData
+
+__all__ = ["IMU", "IMUData"]
+

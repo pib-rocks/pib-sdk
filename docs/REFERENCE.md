@@ -34,6 +34,7 @@ Two things are true of every module here:
 - [`pib_sdk.features.assistant`](#pib_sdkfeaturesassistant) — voice assistant
 - [`pib_sdk.features.display`](#pib_sdkfeaturesdisplay) — pib's screen
 - [`pib_sdk.features.relay`](#pib_sdkfeaturesrelay) — solid-state relay
+- [`pib_sdk.features.imu`](#pib_sdkfeaturesimu) — live IMU acceleration and gyro
 
 ---
 
@@ -812,3 +813,54 @@ topic value or raises `TimeoutError`. `subscribe(callback: Callable[[bool],
 None]) -> None` registers future state callbacks; `unsubscribe(callback) ->
 None` removes one if present without error. Callback exceptions occur on the
 topic callback thread.
+
+---
+
+## `pib_sdk.features.imu`
+
+Caches the latest `sensor_msgs/Imu` message from `/imu`. There is no callback
+API and no assumed publish period: `latest()` returns immediately, including
+`None` before the first well-formed sample. Measured intervals on this
+hardware are not uniform (min 0 ms, max >100 ms), so use `IMUData.age_s`
+instead of a 100 ms rule.
+
+```python
+from pib_sdk.features.imu import IMU
+
+with IMU(host="localhost") as imu:
+    sample = imu.latest()
+    if sample is None:
+        print("no sample yet")
+    else:
+        print(sample.acceleration_m_s2, sample.angular_velocity_rad_s, sample.age_s)
+        print(sample.orientation_available, sample.orientation)
+```
+
+> **Orientation is not available on this hardware.** The topic still carries
+> a quaternion field, but `orientation_covariance[0] == -1.0` (the
+> sensor_msgs convention for "do not use this orientation"). The SDK sets
+> `orientation_available` to `False` and `orientation` to `None` rather than
+> treating an identity quaternion as a measurement. Linear acceleration is
+> metres per second squared; angular velocity is radians per second.
+
+`Vector3(x, y, z)` and `Quaternion(x, y, z, w)` are frozen dataclasses in
+those units. `IMUData` fields: `acceleration_m_s2: Vector3`,
+`angular_velocity_rad_s: Vector3`, `orientation: Quaternion | None`,
+`orientation_available: bool`, `orientation_covariance: list[float]`,
+`timestamp_s: float` (host wall clock when the message was received, **not**
+the sensor header stamp), `age_s: float` (`time.time() - timestamp_s` at the
+`latest()` call).
+
+`IMU(host="localhost", port=9090, imu_topic="/imu",
+imu_message_type="sensor_msgs/Imu")` connects immediately and raises
+`ConnectionError` after five seconds. It owns a background `/imu`
+subscription used only to refresh the cache. Use a context manager or
+`close() -> None`. Malformed messages (missing `linear_acceleration` or
+`angular_velocity` `x`/`y`/`z`) are ignored and do not clear a previous
+sample. Subscribe/callback exceptions from `roslibpy` stay on the topic
+thread; `latest()` itself does not raise for missing data.
+
+| Method | Signature / return | Errors and missing data |
+|---|---|---|
+| `latest` | `() -> IMUData | None` | returns `None` until a well-formed sample arrives; does not block or time out |
+| `close` | `() -> None` | connection teardown errors are swallowed |

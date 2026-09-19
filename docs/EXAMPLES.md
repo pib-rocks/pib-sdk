@@ -14,6 +14,7 @@ All scripts are self-contained and run from a checkout after
 | [`voice_assistant.py`](../examples/voice_assistant.py) | **Needs a live robot** | Create a chat, send a message, and poll for a reply |
 | [`program_and_button.py`](../examples/program_and_button.py) | **Needs a live robot** | Run a saved Blockly program and optionally bind an RGB button |
 | [`display_and_relay.py`](../examples/display_and_relay.py) | **Needs a live robot** | Show built-in/custom imagery and optionally pulse the relay |
+| [`imu_latest.py`](../examples/imu_latest.py) | **Needs a live robot** | Print `IMU.latest()` samples with age and orientation availability |
 
 Examples intentionally have no test-only fakes. A script marked live opens
 real rosbridge and/or pib-backend connections. Checked command failures raise
@@ -31,6 +32,7 @@ python examples/drawing_image.py line-art.png --host pib.local
 python examples/voice_assistant.py --host pib.local --message "Introduce yourself."
 python examples/program_and_button.py --host pib.local --program-number PROGRAM_ID --button 5
 python examples/display_and_relay.py --host pib.local --image logo.png
+python examples/imu_latest.py --host pib.local --samples 5
 ```
 
 The pose command assumes a saved Cerebra pose named `rest` already exists.

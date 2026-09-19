@@ -16,6 +16,7 @@ way to remove motor power.
 - [Use the voice assistant](#use-the-voice-assistant)
 - [Run a Blockly program and bind a button](#run-a-blockly-program-and-bind-a-button)
 - [Use the display and relay](#use-the-display-and-relay)
+- [Read the latest IMU sample](#read-the-latest-imu-sample)
 
 ## First steps
 
@@ -259,3 +260,25 @@ with Relay("pib.local") as relay:
 Confirm what the relay physically switches before use. The complete
 [`display_and_relay.py`](../examples/display_and_relay.py) defaults to the
 built-in eyes and requires `--enable-relay` before switching the relay.
+
+## Read the latest IMU sample
+
+Needs a live robot publishing `/imu`. **No orientation is available** on this
+hardware: `orientation_available` is `False`, `orientation` is `None`, and
+the tutorial does not plot or interpret a quaternion.
+
+```python
+from pib_sdk.features.imu import IMU
+
+with IMU("pib.local") as imu:
+    sample = imu.latest()
+    if sample is None:
+        print("no sample yet")
+    else:
+        print(sample.acceleration_m_s2, sample.angular_velocity_rad_s, sample.age_s)
+        print("orientation_available", sample.orientation_available)
+```
+
+`latest()` does not wait and does not assume a regular interval. Poll in your
+own loop and use `age_s` to decide whether a cached sample is still useful.
+See [`imu_latest.py`](../examples/imu_latest.py).
