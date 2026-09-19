@@ -18,6 +18,7 @@ approximated.
 - [Deep dive: running a Blockly program](#deep-dive-running-a-blockly-program)
 - [Deep dive: poses — apply vs. save](#deep-dive-poses--apply-vs-save)
 - [Deep dive: telemetry — pull vs. push](#deep-dive-telemetry--pull-vs-push)
+- [Deep dive: IMU — latest sample over `/imu`](#deep-dive-imu--latest-sample-over-imu)
 
 ---
 
@@ -145,7 +146,7 @@ flowchart TD
     subgraph P3b["3b. ROS2 topic -- subscribe, streaming"]
         direction LR
         D3["ROS2 node"] -->|message| D2["rosbridge : 9090"]
-        D2 -->|"callback(message)\non every message"| D1["Telemetry · Programs\nRelay · Write (echo)"]
+        D2 -->|"callback(message)\non every message"| D1["Telemetry · Programs\nRelay · Write (echo) · IMU"]
     end
 ```
 
@@ -154,7 +155,7 @@ flowchart TD
 | 1 | REST | `self._request("GET", "/pose")` → immediate JSON | `BackendClient` (poses, programs, buttons, motors, camera settings, personalities, chats) |
 | 2 | ROS2 service call | `service.call(roslibpy.ServiceRequest({...}), timeout=...)` → blocks for one response | `Write.set`/`Write.move`/`Write.send_timed_trajectory` (`/apply_motor_settings`, `/apply_joint_trajectory`), `Speak.say` (`play_audio_from_speech`), `Telemetry.get_position_deg` (`get_joint_position`), `Programs.start`/`stop` (`proxy_run_program_start/stop`), `Assistant.*` (all four assistant services), `Camera.get_snapshot_bytes`/`get_depth_frame`/`get_distance_at_px` (camera services), `Relay.set` (`set_solid_state_relay_state`) |
 | 3a | ROS2 topic, publish | `topic.publish(roslibpy.Message({...}))` → no response | `Display.show_*`/`clear` (`display_image`) — the **only** fire-and-forget publish in this SDK |
-| 3b | ROS2 topic, subscribe | `topic.subscribe(callback)` → callback fires per message, forever until unsubscribed | `Telemetry.subscribe_current`/`get_current_ma` (`motor_current`), `Programs.run` (`proxy_run_program_feedback/result/status`), `Relay.get_state`/`subscribe` (`solid_state_relay_state`), `Write`'s opt-in `verify_echo` (`/joint_trajectory`, `/motor_settings`) |
+| 3b | ROS2 topic, subscribe | `topic.subscribe(callback)` → callback fires per message, forever until unsubscribed | `Telemetry.subscribe_current`/`get_current_ma` (`motor_current`), `Programs.run` (`proxy_run_program_feedback/result/status`), `Relay.get_state`/`subscribe` (`solid_state_relay_state`), `Write`'s opt-in `verify_echo` (`/joint_trajectory`, `/motor_settings`), `IMU.latest` (`/imu`, cache only — no user callbacks) |
 
 Note that `Write.move()` is a **service call**, not a topic publish — it's
 easy to assume otherwise since "move" sounds like a fire-and-forget command.
@@ -206,6 +207,7 @@ flowchart TD
     rlp --> camera["features/camera.py"]
     rlp --> display["features/display.py"]
     rlp --> relay["features/relay.py"]
+    rlp --> imu["features/imu.py"]
 
     subgraph TOP["pib_sdk top level -- from pib_sdk import ..."]
         control
@@ -474,6 +476,29 @@ REST, so it can't detect a stall or a hand-moved joint. `get_current_ma` is
 genuine live telemetry (electrical current, in milliamps); a motor with no
 current bricklet wired up simply never appears on the topic, which is
 steady state, not a bug.
+
+---
+
+## Deep dive: IMU — latest sample over `/imu`
+
+`IMU` is pattern 3b with no public subscribe API. Construction opens a
+rosbridge WebSocket, subscribes to `/imu` (`sensor_msgs/Imu`), and stores
+the last well-formed acceleration and angular-velocity vectors. `latest()`
+reads that cache and returns immediately.
+
+```mermaid
+flowchart LR
+    subgraph IMU["IMU -- push to cache, poll with latest()"]
+        direction LR
+        N["camera / IMU node"] -->|"sensor_msgs/Imu on /imu\nnon-uniform interval"| RB["rosbridge"]
+        RB -->|"internal subscribe only"| C["background cache"]
+        C -->|"latest() -> IMUData or None"| S["your script"]
+    end
+```
+
+`timestamp_s` is the host wall clock at receive time, not the ROS header
+stamp. `age_s` is computed when `latest()` builds the snapshot. Orientation
+is not treated as a measurement while `orientation_covariance[0] == -1.0`.
 
 ---
 

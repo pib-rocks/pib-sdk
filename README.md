@@ -14,10 +14,10 @@ This README is the entry point. Continue with:
 
 | Document | Use it for |
 |---|---|
-| **[API reference](docs/REFERENCE.md)** | Signatures, parameters, return values, exceptions, units, and backend caveats for all 155 public API elements |
-| **[Tutorials](docs/TUTORIALS.md)** | Guided tasks from first connection through IK, poses, depth vision, drawing, programs, buttons, display, and relay |
+| **[API reference](docs/REFERENCE.md)** | Signatures, parameters, return values, exceptions, units, and backend caveats for all 161 public API elements |
+| **[Tutorials](docs/TUTORIALS.md)** | Guided tasks from first connection through IK, poses, depth vision, IMU, drawing, programs, buttons, display, and relay |
 | **[Runnable examples](docs/EXAMPLES.md)** | An index of scripts under [`examples/`](examples/) and whether each needs a live robot |
-| **[Architecture](docs/ARCHITECTURE.md)** | Call-flow diagrams for rosbridge, REST, kinematics, programs, poses, and telemetry |
+| **[Architecture](docs/ARCHITECTURE.md)** | Call-flow diagrams for rosbridge, REST, kinematics, programs, poses, telemetry, and IMU |
 
 ---
 
@@ -246,6 +246,7 @@ with Robot(host="pib.local") as robot:
 | Drive the voice assistant: state, chats, personalities | `pib_sdk.features.assistant` |
 | Push an image to pib's screen | `pib_sdk.features.display` |
 | Read/set the solid-state relay | `pib_sdk.features.relay` |
+| Read the latest IMU acceleration and gyro sample | [`pib_sdk.features.imu`](docs/REFERENCE.md#pib_sdkfeaturesimu) |
 
 > `features.assistant` and `features.programs` call the exact same rosbridge
 > services and REST routes Cerebra itself uses for chat and "run program" —
