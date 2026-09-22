@@ -1,8 +1,9 @@
 """Camera snapshots and depth frames over rosbridge.
 
 pib-backend exposes JPEG snapshots via ``get_camera_image`` and depth via
-``get_depth_frame`` / ``get_distance_at_px``. There's no live video streaming,
-and no on-board vision/AI here. Camera *settings* (resolution, refresh rate,
+``get_depth_frame`` / ``get_distance_at_px``. There's no live video streaming
+in this module. Starting and stopping on-device neural networks is
+:mod:`pib_sdk.models`, not here. Camera *settings* (resolution, refresh rate,
 quality) are REST configuration, already on :class:`pib_sdk.backend.BackendClient`
 (``get_camera_settings`` / ``update_camera_settings``) -- not part of this
 module.

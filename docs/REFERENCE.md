@@ -23,6 +23,7 @@ Two things are true of every module here:
 - [`pib_sdk.kinematics`](#pib_sdkkinematics) — forward/inverse kinematics
 - [`pib_sdk.robot_model`](#pib_sdkrobot_model) — URDF chain definitions and Pinocchio models
 - [`pib_sdk.speech`](#pib_sdkspeech) — text-to-speech
+- [`pib_sdk.models`](#pib_sdkmodels) — start and stop on-device neural networks
 - [`pib_sdk.telemetry`](#pib_sdktelemetry) — motor position/current readback
 - [`pib_sdk.backend`](#pib_sdkbackend) — low-level REST client
 - [`pib_sdk.robot`](#pib_sdkrobot) — bundles the four core clients
@@ -297,6 +298,49 @@ the service.
 Empty text or an unknown preset raises `ValueError`; a closed connection or
 service error raises `RuntimeError`; no callback before the timeout raises
 `TimeoutError`. Otherwise the raw response dictionary is returned.
+
+---
+
+## `pib_sdk.models`
+
+Starts and stops the camera node's on-device neural networks over rosbridge
+(`list_models`, `start_model`, `stop_model`). pib-backend HTTP does **not**
+proxy these services; `BackendClient` has no equivalent routes.
+
+```python
+from pib_sdk import Models
+
+with Models(host="localhost") as models:
+    for entry in models.list_models():
+        print(entry.model_id, entry.active)
+    result = models.start_model("hand_tracking")
+    print(result.success, result.message)
+    models.stop_model("hand_tracking")
+```
+
+`Models(host="localhost", port=9090, owner=None,
+list_models_service="list_models", start_model_service="start_model",
+stop_model_service="stop_model", connect_timeout=5.0)` connects immediately
+and raises `ConnectionError` if rosbridge is not connected within
+`connect_timeout`. Use a context manager or `close() -> None`; close
+suppresses shutdown errors. The default owner is `pib-sdk-<pid>` (same shape
+as Blockly's `blockly-<pid>`). Pass `owner=` on the constructor or on
+`start_model` / `stop_model` to override it; `stop_model` always sends both
+`model_id` and `owner` because the node rejects an id-only stop.
+
+`list_models(timeout=10.0) -> list[ModelInfo]` returns the node's
+`ModelInfo` entries. `start_model(model_id: str, *, owner: str | None = None,
+timeout=30.0) -> ModelResult` and `stop_model(model_id: str, *, owner: str |
+None = None, timeout=30.0) -> ModelResult` return `success` plus the node's
+`message`. Callers never pass a shave budget: `start_model` always sends
+`shaves=0` (the StartModel.srv registry / manifest default). A mismatched
+shave count would be rejected by the node. `success=false` raises
+`ModelError` with the node's message (not a silent no-op). A closed
+connection raises `RuntimeError`.
+
+`ModelInfo` fields: `model_id: str`, `task: str`, `licence: str`,
+`shaves: int`, `size_bytes: int`, `available: bool`, `active: bool`.
+`ModelResult` fields: `success: bool`, `message: str`.
 
 ---
 
@@ -652,7 +696,8 @@ REST and malformed-response errors propagate from both functions.
 ## `pib_sdk.features.camera`
 
 Still JPEG snapshots and depth frames are available; there is no live video
-streaming or on-board vision/AI in this client.
+streaming in this client. On-device neural networks are
+[`pib_sdk.models`](#pib_sdkmodels).
 
 ```python
 from pib_sdk.features.camera import Camera

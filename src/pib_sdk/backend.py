@@ -1,8 +1,8 @@
 """REST client for pib-backend, the Flask API behind Cerebra.
 
-This is a separate HTTP server from rosbridge (see :mod:`pib_sdk.control` and
-:mod:`pib_sdk.speech`, which talk rosbridge directly for real-time motor/audio
-control) -- typically the same robot host, a different port. pib-backend owns
+This is a separate HTTP server from rosbridge (see :mod:`pib_sdk.control`,
+:mod:`pib_sdk.speech`, and :mod:`pib_sdk.models`, which talk rosbridge
+directly for real-time motor/audio/model control) -- typically the same robot host, a different port. pib-backend owns
 the durable data Cerebra's UI lets a user create: saved poses, saved Blockly
 programs, and RGB-button-to-program bindings. This module is the thin,
 low-level client for that data; see :mod:`pib_sdk.features.poses`,
