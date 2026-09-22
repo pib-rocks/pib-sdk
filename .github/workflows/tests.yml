@@ -1,0 +1,33 @@
+name: Tests
+
+# The unit suite needs no robot and no secrets: tests/conftest.py provides fakes for the
+# roslibpy primitives, so the whole suite runs offline (measured: 175 passed, 1 skipped).
+# Until this workflow existed only the Documentation checks and the publish path ran in CI,
+# which meant a broken test could reach main unnoticed and be inherited by the next release.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    name: Unit tests (pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install the SDK with its test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Run the unit tests
+        run: python -m pytest -q
