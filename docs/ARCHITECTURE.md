@@ -132,7 +132,7 @@ flowchart TD
 
     subgraph P2["2. ROS2 service call -- request / response"]
         direction LR
-        B1["Write · Telemetry · Programs\nAssistant · Camera · Relay"] -->|"service.call(request, timeout=...)"| B2["rosbridge : 9090"]
+        B1["Write · Telemetry · Programs\nAssistant · Camera · Relay · Models"] -->|"service.call(request, timeout=...)"| B2["rosbridge : 9090"]
         B2 --> B3["ROS2 node"]
         B3 -->|response| B2 -->|response| B1
     end
@@ -153,7 +153,7 @@ flowchart TD
 | # | Pattern | Code shape | Used by |
 |---|---|---|---|
 | 1 | REST | `self._request("GET", "/pose")` → immediate JSON | `BackendClient` (poses, programs, buttons, motors, camera settings, personalities, chats) |
-| 2 | ROS2 service call | `service.call(roslibpy.ServiceRequest({...}), timeout=...)` → blocks for one response | `Write.set`/`Write.move`/`Write.send_timed_trajectory` (`/apply_motor_settings`, `/apply_joint_trajectory`), `Speak.say` (`play_audio_from_speech`), `Telemetry.get_position_deg` (`get_joint_position`), `Programs.start`/`stop` (`proxy_run_program_start/stop`), `Assistant.*` (all four assistant services), `Camera.get_snapshot_bytes`/`get_depth_frame`/`get_distance_at_px` (camera services), `Relay.set` (`set_solid_state_relay_state`) |
+| 2 | ROS2 service call | `service.call(roslibpy.ServiceRequest({...}), timeout=...)` → blocks for one response | `Write.set`/`Write.move`/`Write.send_timed_trajectory` (`/apply_motor_settings`, `/apply_joint_trajectory`), `Speak.say` (`play_audio_from_speech`), `Models.list_models`/`start_model`/`stop_model` (`list_models`, `start_model`, `stop_model`), `Telemetry.get_position_deg` (`get_joint_position`), `Programs.start`/`stop` (`proxy_run_program_start/stop`), `Assistant.*` (all four assistant services), `Camera.get_snapshot_bytes`/`get_depth_frame`/`get_distance_at_px` (camera services), `Relay.set` (`set_solid_state_relay_state`) |
 | 3a | ROS2 topic, publish | `topic.publish(roslibpy.Message({...}))` → no response | `Display.show_*`/`clear` (`display_image`) — the **only** fire-and-forget publish in this SDK |
 | 3b | ROS2 topic, subscribe | `topic.subscribe(callback)` → callback fires per message, forever until unsubscribed | `Telemetry.subscribe_current`/`get_current_ma` (`motor_current`), `Programs.run` (`proxy_run_program_feedback/result/status`), `Relay.get_state`/`subscribe` (`solid_state_relay_state`), `Write`'s opt-in `verify_echo` (`/joint_trajectory`, `/motor_settings`), `IMU.latest` (`/imu`, cache only — no user callbacks) |
 
@@ -178,6 +178,7 @@ flowchart TD
 
     rlp --> control["control.py\nWrite"]
     rlp --> speech["speech.py\nSpeak"]
+    rlp --> models["models.py\nModels"]
     rlp --> telemetry["telemetry.py\nTelemetry"]
     stdlib --> backend["backend.py\nBackendClient"]
 
@@ -214,11 +215,12 @@ flowchart TD
         kinematics
         robot_model
         speech
+        models
     end
 ```
 
 The `TOP` box is exactly (and only) what `pib_sdk/__init__.py` re-exports:
-`control`, `kinematics`, `robot_model`, and `speech`. **`backend`,
+`control`, `kinematics`, `robot_model`, `speech`, and `models`. **`backend`,
 `telemetry`, `robot`, and everything under `features/` need their own
 explicit import** (`from pib_sdk.telemetry import Telemetry`, `from
 pib_sdk.features.poses import set_pose`, etc.) — `import pib_sdk` alone does

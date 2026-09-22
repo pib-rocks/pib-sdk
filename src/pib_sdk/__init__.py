@@ -39,6 +39,7 @@ from pib_sdk.kinematics import (
     pose_from_xyz_rpy,
     pose_to_xyz_rpy,
 )
+from pib_sdk.models import ModelError, ModelInfo, ModelResult, Models
 from pib_sdk.robot_model import (
     HEAD,
     LEFT_ARM,
@@ -97,5 +98,10 @@ __all__ = [
     "close_right_hand",
     # speech
     "Speak",
+    # on-device models
+    "Models",
+    "ModelInfo",
+    "ModelResult",
+    "ModelError",
     "__version__",
 ]

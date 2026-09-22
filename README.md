@@ -14,7 +14,7 @@ This README is the entry point. Continue with:
 
 | Document | Use it for |
 |---|---|
-| **[API reference](docs/REFERENCE.md)** | Signatures, parameters, return values, exceptions, units, and backend caveats for all 161 public API elements |
+| **[API reference](docs/REFERENCE.md)** | Signatures, parameters, return values, exceptions, units, and backend caveats for all 169 public API elements |
 | **[Tutorials](docs/TUTORIALS.md)** | Guided tasks from first connection through IK, poses, depth vision, IMU, drawing, programs, buttons, display, and relay |
 | **[Runnable examples](docs/EXAMPLES.md)** | An index of scripts under [`examples/`](examples/) and whether each needs a live robot |
 | **[Architecture](docs/ARCHITECTURE.md)** | Call-flow diagrams for rosbridge, REST, kinematics, programs, poses, telemetry, and IMU |
