@@ -323,20 +323,47 @@ list_models_service="list_models", start_model_service="start_model",
 stop_model_service="stop_model", connect_timeout=5.0)` connects immediately
 and raises `ConnectionError` if rosbridge is not connected within
 `connect_timeout`. Use a context manager or `close() -> None`; close
-suppresses shutdown errors. The default owner is `pib-sdk-<pid>` (same shape
-as Blockly's `blockly-<pid>`). Pass `owner=` on the constructor or on
-`start_model` / `stop_model` to override it; `stop_model` always sends both
+suppresses shutdown errors. The default owner is the fixed string `pib-sdk`,
+deliberately *not* a per-process identifier. The node matches start and stop
+calls by owner, so a changing owner makes a model started by one script
+impossible to stop from another - measured on the robot, where the node answered
+`was not requested by <owner>` and left the model running while still reporting
+success. Pass `owner=` on the constructor or on `start_model` / `stop_model` to
+override it when callers must be told apart; `stop_model` always sends both
 `model_id` and `owner` because the node rejects an id-only stop.
 
 `list_models(timeout=10.0) -> list[ModelInfo]` returns the node's
 `ModelInfo` entries. `start_model(model_id: str, *, owner: str | None = None,
-timeout=30.0) -> ModelResult` and `stop_model(model_id: str, *, owner: str |
-None = None, timeout=30.0) -> ModelResult` return `success` plus the node's
+timeout=120.0) -> ModelResult` and `stop_model(model_id: str, *, owner: str |
+None = None, timeout=120.0) -> ModelResult` return `success` plus the node's
 `message`. Callers never pass a shave budget: `start_model` always sends
 `shaves=0` (the StartModel.srv registry / manifest default). A mismatched
-shave count would be rejected by the node. `success=false` raises
-`ModelError` with the node's message (not a silent no-op). A closed
-connection raises `RuntimeError`.
+shave count would be rejected by the node. The default timeout is generous on
+purpose: starting a model rebuilds the camera pipeline on the robot and was
+measured to outlast 30s, so a shorter timeout raises while the model is still
+coming up and makes a successful start look like a failure.
+
+`success=false` raises `ModelError` with the node's message (not a silent
+no-op). `stop_model` also raises `ModelError` when the node ignored the stop -
+that is, when the reply names a different owner - because the node answers
+`success=true` for every rejection it makes. Transport failures during a call
+(an unanswered or dropped service call) raise `ModelError` as well, with the
+original exception as `__cause__`, and a failed connection raises
+`ConnectionError`; the transport's own exception types are never passed through.
+Using an already closed client raises `RuntimeError`.
+
+Two node behaviours worth knowing, both measured:
+
+- Starting a model that is *already* running answers
+  `'Model <id> already requested by <owner>'` with `success=true`. That is
+  correct - the model is up - but a caller cannot tell "I started it" from
+  "it was already running" through the result alone.
+- The node reference-counts consumers. A `stop_model` it accepts can still leave
+  the model running while a subscriber holds it, answering
+  `'Model <id> remains in use'`. That is an accepted stop, not a failure, and the
+  model stops once the last consumer goes away. A client that dies without
+  unsubscribing can keep a model alive that no later call can stop; only
+  restarting the camera container clears it.
 
 `ModelInfo` fields: `model_id: str`, `task: str`, `licence: str`,
 `shaves: int`, `size_bytes: int`, `available: bool`, `active: bool`.
