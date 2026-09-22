@@ -27,7 +27,6 @@ Example
 
 from __future__ import annotations
 
-import os
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -43,8 +42,25 @@ def _wait_until_connected(ros: roslibpy.Ros, timeout: float = 5.0) -> None:
         raise ConnectionError(f"ROSBridge not connected after {timeout:.1f}s")
 
 
+# The node answers success=true for every stop it ignores, so the reply text is the
+# only signal that distinguishes "done" from "not mine" (measured on the pib). Treat
+# a match as a rejection: the model keeps running, and reporting success would make
+# the caller believe it stopped something. Kept as a named constant so the coupling
+# to the node's wording is visible and testable.
+_REJECTED_STOP_MARKER = "was not requested by"
+
+
 def _default_owner() -> str:
-    return f"pib-sdk-{os.getpid()}"
+    """Return the owner string for calls that the caller does not name.
+
+    Deliberately a fixed string rather than a per-process identifier. The node
+    matches start and stop calls by owner, so a owner that changes between runs
+    makes a model started by one script impossible to stop from another - the
+    node rejects it with "was not requested by <owner>" and still reports success.
+    A stable default means any run can stop what an earlier one started; callers
+    that need to be told apart pass ``owner=`` explicitly.
+    """
+    return "pib-sdk"
 
 
 class ModelError(RuntimeError):
@@ -106,8 +122,18 @@ class Models:
     ) -> None:
         self._owner = owner if owner is not None else _default_owner()
         self.ros = roslibpy.Ros(host=host, port=port)
-        self.ros.run()
-        _wait_until_connected(self.ros, timeout=connect_timeout)
+        try:
+            self.ros.run()
+            _wait_until_connected(self.ros, timeout=connect_timeout)
+        except ConnectionError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - re-raised as the documented error type
+            # roslibpy raises its own types (e.g. RosTimeoutError) from its connection
+            # thread. Callers catch ConnectionError; leaking the transport type would
+            # make an unreachable robot look like a programming error.
+            raise ConnectionError(
+                f"could not connect to rosbridge at {host}:{port}: {type(exc).__name__}: {exc}"
+            ) from exc
 
         self._list_models_service = roslibpy.Service(
             self.ros, list_models_service, "datatypes/ListModels"
@@ -146,9 +172,15 @@ class Models:
         model_id: str,
         *,
         owner: str | None = None,
-        timeout: float = 30.0,
+        timeout: float = 120.0,
     ) -> ModelResult:
         """Start inference for ``model_id`` using the manifest shave count.
+
+        The default timeout is generous on purpose: starting a model rebuilds the
+        camera pipeline on the robot, which was measured to outlast 30s on a pib.
+        A shorter timeout raises while the model is still coming up, which makes
+        a successful start look like a failure.
+        
 
         ``shaves`` is sent as ``0`` (registry default). Callers do not choose a
         shave budget; a mismatched explicit value would be rejected by the node.
@@ -169,10 +201,16 @@ class Models:
         model_id: str,
         *,
         owner: str | None = None,
-        timeout: float = 30.0,
+        timeout: float = 120.0,
     ) -> ModelResult:
-        """Stop inference for ``model_id``. Always sends the owning string."""
-        return self._call_lifecycle(
+        """Stop inference for ``model_id``. Always sends the owning string.
+
+        Rejects a stop the node silently ignored - see ``_REJECTED_STOP_MARKER``.
+        Note that the node reference-counts consumers: a stop it accepts still
+        leaves the model running while a subscriber holds it, in which case the
+        node answers "remains in use" and running longer is correct behaviour.
+        """
+        result = self._call_lifecycle(
             self._stop_model_service,
             {
                 "model_id": str(model_id),
@@ -181,6 +219,11 @@ class Models:
             model_id=str(model_id),
             timeout=timeout,
         )
+        if _REJECTED_STOP_MARKER in result.message:
+            raise ModelError(
+                f"the node ignored the stop for {model_id!r} (owner mismatch?): {result.message}"
+            )
+        return result
 
     def _call_lifecycle(
         self,
@@ -192,7 +235,13 @@ class Models:
     ) -> ModelResult:
         if not self.ros.is_connected:
             raise RuntimeError("rosbridge connection is not active.")
-        response = service.call(roslibpy.ServiceRequest(payload), timeout=timeout) or {}
+        try:
+            response = service.call(roslibpy.ServiceRequest(payload), timeout=timeout) or {}
+        except Exception as exc:  # noqa: BLE001 - re-raised as the documented error type
+            # A dropped connection or an unanswered call is a failure the caller must
+            # see as ModelError, not as roslibpy's own exception type: callers catch
+            # what the API documents. The original exception stays as __cause__.
+            raise ModelError(f"{model_id!r}: {type(exc).__name__}: {exc}") from exc
         success = bool(response.get("success", False))
         message = str(response.get("message", "") or "")
         if not success:
