@@ -304,8 +304,8 @@ service error raises `RuntimeError`; no callback before the timeout raises
 ## `pib_sdk.models`
 
 Starts and stops the camera node's on-device neural networks over rosbridge
-(`list_models`, `start_model`, `stop_model`). pib-backend HTTP does **not**
-proxy these services; `BackendClient` has no equivalent routes.
+(`list_models`, `start_model`, `stop_model`, `stop_all_models`). pib-backend
+HTTP does **not** proxy these services; `BackendClient` has no equivalent routes.
 
 ```python
 from pib_sdk import Models
@@ -316,6 +316,7 @@ with Models(host="localhost") as models:
     result = models.start_model("hand_tracking")
     print(result.success, result.message)
     models.stop_model("hand_tracking")
+    models.stop_all_models()
 ```
 
 `Models(host="localhost", port=9090, owner=None,
@@ -336,7 +337,17 @@ override it when callers must be told apart; `stop_model` always sends both
 `ModelInfo` entries. `start_model(model_id: str, *, owner: str | None = None,
 timeout=120.0) -> ModelResult` and `stop_model(model_id: str, *, owner: str |
 None = None, timeout=120.0) -> ModelResult` return `success` plus the node's
-`message`. Callers never pass a shave budget: `start_model` always sends
+`message`. `stop_all_models(timeout=120.0, owner: str | None = None) ->
+list[tuple[str, ModelResult]]` lists current models, then calls `stop_model`
+for each entry whose `active` is true (instance owner unless `owner` is
+passed). It returns one `(model_id, ModelResult)` pair per active model and
+does **not** raise on the first failure: a rejected or failed stop is
+recorded with `success=False` so the caller can see which models stopped
+and which did not. Nothing active returns `[]`. "All" is not completeness:
+the node reference-counts consumers and only stops what that owner started.
+A foreign-owner rejection (`was not requested by <owner>` while the node
+still reports success) is an expected per-model outcome here, not an
+exception that aborts the rest. Callers never pass a shave budget: `start_model` always sends
 `shaves=0` (the StartModel.srv registry / manifest default). A mismatched
 shave count would be rejected by the node. The default timeout is generous on
 purpose: starting a model rebuilds the camera pipeline on the robot and was
@@ -344,7 +355,8 @@ measured to outlast 30s, so a shorter timeout raises while the model is still
 coming up and makes a successful start look like a failure.
 
 `success=false` raises `ModelError` with the node's message (not a silent
-no-op). `stop_model` also raises `ModelError` when the node ignored the stop -
+no-op), except in `stop_all_models`, which records that outcome and continues.
+`stop_model` also raises `ModelError` when the node ignored the stop -
 that is, when the reply names a different owner - because the node answers
 `success=true` for every rejection it makes. Transport failures during a call
 (an unanswered or dropped service call) raise `ModelError` as well, with the

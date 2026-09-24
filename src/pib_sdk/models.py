@@ -22,7 +22,7 @@ Example
             print(entry.model_id, entry.active, entry.shaves)
         result = models.start_model("hand_tracking")
         print(result.success, result.message)
-        models.stop_model("hand_tracking")
+        models.stop_all_models()
 """
 
 from __future__ import annotations
@@ -64,7 +64,11 @@ def _default_owner() -> str:
 
 
 class ModelError(RuntimeError):
-    """Raised when ``start_model`` or ``stop_model`` returns ``success=false``."""
+    """Raised when ``start_model`` or ``stop_model`` returns ``success=false``.
+
+    ``stop_all_models`` does not raise this for a rejected or failed stop of one
+    model; it records that outcome and continues.
+    """
 
 
 @dataclass(frozen=True)
@@ -82,7 +86,10 @@ class ModelInfo:
 
 @dataclass(frozen=True)
 class ModelResult:
-    """``success`` and ``message`` from ``start_model`` / ``stop_model``."""
+    """``success`` and ``message`` from ``start_model`` / ``stop_model``.
+
+    ``stop_all_models`` reuses this type in ``(model_id, ModelResult)`` pairs.
+    """
 
     success: bool
     message: str
@@ -224,6 +231,47 @@ class Models:
                 f"the node ignored the stop for {model_id!r} (owner mismatch?): {result.message}"
             )
         return result
+
+    def stop_all_models(
+        self,
+        timeout: float = 120.0,
+        owner: str | None = None,
+    ) -> list[tuple[str, ModelResult]]:
+        """Stop every *currently active* model this owner can stop.
+
+        "All" is not a claim of completeness. The node reference-counts
+        consumers and only stops what the calling owner started. A stop for a
+        foreign owner is rejected with ``was not requested by <owner>`` while
+        the node still reports ``success=true``; :meth:`stop_model` raises
+        :class:`ModelError` for that. Here that rejection is an expected
+        outcome: it is recorded on that model's result and the remaining
+        active models are still attempted. Inactive models are skipped.
+
+        Steps: :meth:`list_models`, keep entries with ``active`` true, then
+        :meth:`stop_model` for each. Uses the instance owner unless ``owner``
+        is passed. Failures are collected, not raised on the first one.
+
+        Returns
+        -------
+        list[tuple[str, ModelResult]]
+            One ``(model_id, result)`` pair per active model, in list order.
+            ``result.success`` is ``False`` when that stop failed or was
+            rejected. An empty list means nothing was active; that is not an
+            error.
+        """
+        results: list[tuple[str, ModelResult]] = []
+        for entry in self.list_models():
+            if not entry.active:
+                continue
+            try:
+                result = self.stop_model(entry.model_id, owner=owner, timeout=timeout)
+            except ModelError as exc:
+                results.append(
+                    (entry.model_id, ModelResult(success=False, message=str(exc)))
+                )
+            else:
+                results.append((entry.model_id, result))
+        return results
 
     def _call_lifecycle(
         self,

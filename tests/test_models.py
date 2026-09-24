@@ -8,7 +8,7 @@ import pytest
 
 import pib_sdk.models as models_module
 from conftest import patch_roslibpy
-from pib_sdk.models import ModelError, ModelInfo, Models
+from pib_sdk.models import ModelError, ModelInfo, ModelResult, Models
 
 
 @pytest.fixture
@@ -207,6 +207,105 @@ def test_start_model_default_timeout_tolerates_a_slow_pipeline_rebuild(fake_rosl
 
     default = inspect.signature(Models.start_model).parameters["timeout"].default
     assert default > 30.0, f"Default-Timeout {default}s ist fuer einen Modellstart zu knapp"
+
+
+def _model_entry(model_id: str, *, active: bool) -> dict:
+    return {
+        "model_id": model_id,
+        "task": "vision",
+        "licence": "unknown - see source",
+        "shaves": 6,
+        "size_bytes": 1234,
+        "available": True,
+        "active": active,
+    }
+
+
+def test_stop_all_models_stops_every_active_model(fake_roslibpy):
+    _topics, services = fake_roslibpy
+    models = Models(host="localhost")
+    services["list_models"].default_response = {
+        "models": [
+            _model_entry("hand_tracking", active=True),
+            _model_entry("face", active=True),
+            _model_entry("idle", active=False),
+        ]
+    }
+    stop = services["stop_model"]
+
+    def stop_call(request, timeout=None):
+        stop.calls.append(request)
+        return {"success": True, "message": f"Model {request['model_id']} stopped"}
+
+    stop.call = stop_call
+
+    results = models.stop_all_models()
+
+    assert results == [
+        ("hand_tracking", ModelResult(success=True, message="Model hand_tracking stopped")),
+        ("face", ModelResult(success=True, message="Model face stopped")),
+    ]
+    assert [call["model_id"] for call in stop.calls] == ["hand_tracking", "face"]
+    assert all(call["owner"] == "pib-sdk" for call in stop.calls)
+
+
+def test_stop_all_models_records_a_foreign_owner_and_continues(fake_roslibpy):
+    _topics, services = fake_roslibpy
+    models = Models(host="localhost")
+    services["list_models"].default_response = {
+        "models": [
+            _model_entry("hand_tracking", active=True),
+            _model_entry("face", active=True),
+            _model_entry("gesture", active=True),
+        ]
+    }
+    stop = services["stop_model"]
+
+    def stop_call(request, timeout=None):
+        stop.calls.append(request)
+        model_id = request["model_id"]
+        if model_id == "face":
+            return {
+                "success": True,
+                "message": "Model face was not requested by pib-sdk",
+            }
+        return {"success": True, "message": f"Model {model_id} stopped"}
+
+    stop.call = stop_call
+
+    results = models.stop_all_models()
+
+    by_id = {model_id: result for model_id, result in results}
+    assert [model_id for model_id, _ in results] == [
+        "hand_tracking",
+        "face",
+        "gesture",
+    ]
+    assert by_id["hand_tracking"].success is True
+    assert by_id["gesture"].success is True
+    assert by_id["face"].success is False
+    assert "was not requested by" in by_id["face"].message
+    assert [call["model_id"] for call in stop.calls] == [
+        "hand_tracking",
+        "face",
+        "gesture",
+    ]
+
+
+def test_stop_all_models_returns_empty_when_nothing_is_active(fake_roslibpy):
+    _topics, services = fake_roslibpy
+    models = Models(host="localhost")
+    services["list_models"].default_response = {
+        "models": [
+            _model_entry("hand_tracking", active=False),
+            _model_entry("face", active=False),
+        ]
+    }
+
+    results = models.stop_all_models()
+
+    assert results == []
+    assert services["stop_model"].calls == []
 
 
 def test_connection_failure_raises_connection_error(fake_roslibpy, monkeypatch):
