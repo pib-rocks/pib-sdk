@@ -55,7 +55,7 @@ from pib_sdk.robot_model import (
 )
 from pib_sdk.speech import Speak
 
-__version__ = "0.5.3"
+__version__ = "0.5.4"
 
 __all__ = [
     # kinematics
