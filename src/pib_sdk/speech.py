@@ -30,10 +30,11 @@ Example
 from __future__ import annotations
 
 import threading
-import time
 from typing import Any
 
 import roslibpy
+
+from pib_sdk.ros_client import get_ros, release_ros
 
 # Map friendly voice names to (gender, language).
 _VOICE_PRESETS: dict[str, tuple[str, str]] = {
@@ -66,15 +67,12 @@ class Speak:
         self._service_name = service_name
         self._service_type = service_type
 
-        self._ros = roslibpy.Ros(host=self._host, port=self._port)
-        self._ros.run()
-
-        deadline = time.time() + float(connect_timeout)
-        while (not self._ros.is_connected) and (time.time() < deadline):
-            time.sleep(0.05)
-
-        if not self._ros.is_connected:
-            raise RuntimeError(f"Could not connect to rosbridge at {self._host}:{self._port}")
+        try:
+            self._ros = get_ros(self._host, self._port, timeout=float(connect_timeout))
+        except ConnectionError as exc:
+            raise RuntimeError(
+                f"Could not connect to rosbridge at {self._host}:{self._port}"
+            ) from exc
 
         self._service = roslibpy.Service(self._ros, self._service_name, self._service_type)
 
@@ -85,12 +83,8 @@ class Speak:
         self.close()
 
     def close(self) -> None:
-        """Close the underlying rosbridge connection."""
-        try:
-            if self._ros and self._ros.is_connected:
-                self._ros.terminate()
-        except Exception:
-            pass
+        """Release the shared rosbridge connection; it stays open for other clients."""
+        release_ros(self._ros)
 
     def say(
         self,

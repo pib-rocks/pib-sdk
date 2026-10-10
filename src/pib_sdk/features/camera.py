@@ -22,22 +22,15 @@ Example
 from __future__ import annotations
 
 import base64
-import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import roslibpy
 
+from pib_sdk.ros_client import get_ros, release_ros
+
 if TYPE_CHECKING:
     import numpy as np
-
-
-def _wait_until_connected(ros: roslibpy.Ros, timeout: float = 5.0) -> None:
-    start = time.time()
-    while not ros.is_connected and time.time() - start < timeout:
-        time.sleep(0.01)
-    if not ros.is_connected:
-        raise ConnectionError(f"ROSBridge not connected after {timeout:.1f}s")
 
 
 def _require_numpy():
@@ -66,9 +59,7 @@ class Camera:
         get_depth_frame_service: str = "get_depth_frame",
         get_distance_at_px_service: str = "get_distance_at_px",
     ) -> None:
-        self.ros = roslibpy.Ros(host=host, port=port)
-        self.ros.run()
-        _wait_until_connected(self.ros)
+        self.ros = get_ros(host, port)
         self._get_image_service = roslibpy.Service(
             self.ros, get_image_service, "datatypes/GetCameraImage"
         )
@@ -86,12 +77,8 @@ class Camera:
         self.close()
 
     def close(self) -> None:
-        """Close the underlying rosbridge connection."""
-        try:
-            if self.ros and self.ros.is_connected:
-                self.ros.terminate()
-        except Exception:
-            pass
+        """Release the shared rosbridge connection; it stays open for other clients."""
+        release_ros(self.ros)
 
     def get_snapshot_bytes(self, timeout: float = 10.0) -> bytes:
         """Return one JPEG frame as raw bytes."""

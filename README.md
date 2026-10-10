@@ -57,13 +57,15 @@ automate the Cerebra UI or duplicate its assistant, pose, or program logic.
 
 Use one host name for a robot, normally `pib.local`. Real-time APIs connect to
 rosbridge (`9090`); persisted Cerebra data uses pib-backend HTTP (`5000`).
-Each live client (`Write`, `Speak`, `Telemetry`, `Camera`, and so on) owns its
-own rosbridge WebSocket and should be closed or used as a context manager.
+Every live client (`Write`, `Speak`, `Telemetry`, `Camera`, and so on) shares
+one rosbridge WebSocket per host and port for the whole process
+(`pib_sdk.ros_client`). Close a client or use it as a context manager when you
+are done with it; that releases the shared connection without disconnecting
+it, so the next client in the same script still connects.
 
 `Robot` is a convenient lifecycle/configuration bundle. It constructs
-`Write`, `Speak`, and `Telemetry` once each and exposes one stateless
-`BackendClient`; it does **not** multiplex those clients over one WebSocket.
-Create only the specialized client you need when connection count matters.
+`Write`, `Speak`, and `Telemetry` once each, over that one shared WebSocket,
+and exposes one stateless `BackendClient`.
 
 ### Motor selectors and names
 

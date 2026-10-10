@@ -20,7 +20,6 @@ Example
 from __future__ import annotations
 
 import threading
-import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -29,6 +28,7 @@ import roslibpy
 
 from pib_sdk.backend import BackendClient
 from pib_sdk.control import All, Write
+from pib_sdk.ros_client import get_ros, release_ros
 
 # Standard ROS2 action_msgs/msg/GoalStatus values, published verbatim on
 # proxy_run_program_status by pib-backend's proxy_program.py.
@@ -70,21 +70,11 @@ def list_programs(backend: BackendClient) -> list[ProgramSummary]:
     ]
 
 
-def _wait_until_connected(ros: roslibpy.Ros, timeout: float = 5.0) -> None:
-    start = time.time()
-    while not ros.is_connected and time.time() - start < timeout:
-        time.sleep(0.01)
-    if not ros.is_connected:
-        raise ConnectionError(f"ROSBridge not connected after {timeout:.1f}s")
-
-
 class Programs:
     """Starts, stops, and streams output from Cerebra programs over rosbridge."""
 
     def __init__(self, host: str = "localhost", port: int = 9090) -> None:
-        self.ros = roslibpy.Ros(host=host, port=port)
-        self.ros.run()
-        _wait_until_connected(self.ros)
+        self.ros = get_ros(host, port)
 
         self._start_service = roslibpy.Service(
             self.ros, "proxy_run_program_start", "datatypes/ProxyRunProgramStart"
@@ -123,12 +113,8 @@ class Programs:
         self.close()
 
     def close(self) -> None:
-        """Close the underlying rosbridge connection."""
-        try:
-            if self.ros and self.ros.is_connected:
-                self.ros.terminate()
-        except Exception:
-            pass
+        """Release the shared rosbridge connection; it stays open for other clients."""
+        release_ros(self.ros)
 
     def start(self, program_number: str, timeout: float = 5.0) -> str:
         """Start a saved program by id; returns a ``proxy_goal_id`` for :meth:`stop`/:meth:`run`."""

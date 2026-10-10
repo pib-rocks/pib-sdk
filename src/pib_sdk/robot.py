@@ -2,10 +2,11 @@
 
 :class:`Write` (motor control), :class:`Speak` (text-to-speech),
 :class:`Telemetry` (position/current readback), and :class:`BackendClient`
-(pib-backend's REST API) each open their own connection, but on a real robot
-they all point at the same host. :class:`Robot` opens all four once and holds
-them as attributes, so scripts don't have to repeat the host (and rosbridge
-port, if non-default) four times.
+(pib-backend's REST API) all point at the same host on a real robot.
+:class:`Robot` constructs all four once and holds them as attributes, so
+scripts don't have to repeat the host (and rosbridge port, if non-default)
+four times. The three rosbridge clients share the process-wide connection
+from :mod:`pib_sdk.ros_client`.
 
 Example
 -------
@@ -58,7 +59,7 @@ class Robot:
         self.close()
 
     def close(self) -> None:
-        """Close every rosbridge connection (``backend`` is plain HTTP; nothing to close)."""
+        """Release the shared rosbridge connection of each client (``backend`` is plain HTTP)."""
         self.write.close()
         self.speak.close()
         self.telemetry.close()

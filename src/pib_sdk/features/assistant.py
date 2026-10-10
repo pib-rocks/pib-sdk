@@ -27,20 +27,12 @@ Example
 
 from __future__ import annotations
 
-import time
 from dataclasses import dataclass
 
 import roslibpy
 
 from pib_sdk.backend import BackendClient
-
-
-def _wait_until_connected(ros: roslibpy.Ros, timeout: float = 5.0) -> None:
-    start = time.time()
-    while not ros.is_connected and time.time() - start < timeout:
-        time.sleep(0.01)
-    if not ros.is_connected:
-        raise ConnectionError(f"ROSBridge not connected after {timeout:.1f}s")
+from pib_sdk.ros_client import get_ros, release_ros
 
 
 # --------------------------------------------------------------------------- #
@@ -134,9 +126,7 @@ class Assistant:
     """Turns the voice assistant on/off and sends it messages, over rosbridge."""
 
     def __init__(self, host: str = "localhost", port: int = 9090) -> None:
-        self.ros = roslibpy.Ros(host=host, port=port)
-        self.ros.run()
-        _wait_until_connected(self.ros)
+        self.ros = get_ros(host, port)
 
         self._get_state_service = roslibpy.Service(
             self.ros, "get_voice_assistant_state", "datatypes/GetVoiceAssistantState"
@@ -158,12 +148,8 @@ class Assistant:
         self.close()
 
     def close(self) -> None:
-        """Close the underlying rosbridge connection."""
-        try:
-            if self.ros and self.ros.is_connected:
-                self.ros.terminate()
-        except Exception:
-            pass
+        """Release the shared rosbridge connection; it stays open for other clients."""
+        release_ros(self.ros)
 
     def get_state(self, timeout: float = 5.0) -> AssistantState:
         response = self._get_state_service.call(roslibpy.ServiceRequest({}), timeout=timeout)

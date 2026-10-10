@@ -3,13 +3,25 @@
 Every rosbridge-backed class in pib_sdk (``Write``, ``Speak``, ``Models``,
 ``Telemetry``, ``Programs``, ``Camera``, ``Display``, ``Relay``, ``Assistant``)
 follows the
-same shape: construct a ``roslibpy.Ros``, then some ``roslibpy.Service``/
-``roslibpy.Topic`` instances off it. These fakes stand in for all three so
-tests can drive request/response behavior and simulate incoming topic
-messages without a real rosbridge server.
+same shape: obtain the shared ``roslibpy.Ros`` from ``pib_sdk.ros_client``,
+then build some ``roslibpy.Service``/``roslibpy.Topic`` instances off it.
+These fakes stand in for all three so tests can drive request/response
+behavior and simulate incoming topic messages without a real rosbridge server.
 """
 
 from __future__ import annotations
+
+import pytest
+
+from pib_sdk import ros_client
+
+
+@pytest.fixture(autouse=True)
+def _fresh_shared_ros_clients():
+    """Every test starts without shared clients, so fakes never leak between tests."""
+    ros_client.terminate_all()
+    yield
+    ros_client.terminate_all()
 
 
 class FakeRos:
@@ -19,6 +31,9 @@ class FakeRos:
         self.is_connected = True
 
     def run(self):
+        pass
+
+    def connect(self):
         pass
 
     def terminate(self):

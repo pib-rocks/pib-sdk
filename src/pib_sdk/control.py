@@ -26,6 +26,8 @@ from typing import Any
 
 import roslibpy
 
+from pib_sdk.ros_client import get_ros, release_ros
+
 logger = logging.getLogger("pib.control")
 if not logger.handlers:
     _handler = logging.StreamHandler()
@@ -148,14 +150,6 @@ DEFAULT_SETTINGS: dict[str, Any] = {
 # --------------------------------------------------------------------------- #
 # Pure helpers (no ROS connection required)                                   #
 # --------------------------------------------------------------------------- #
-def _wait_until_connected(ros: roslibpy.Ros, timeout: float = 5.0) -> None:
-    start = time.time()
-    while not ros.is_connected and time.time() - start < timeout:
-        time.sleep(0.01)
-    if not ros.is_connected:
-        raise ConnectionError(f"ROSBridge not connected after {timeout:.1f}s")
-
-
 def _all_motor_names() -> list[str]:
     names: set = set()
     for group in _MOTOR_GROUPS.values():
@@ -288,9 +282,7 @@ class Write:
         if debug:
             logger.setLevel(logging.DEBUG)
 
-        self.ros = roslibpy.Ros(host=host, port=port)
-        self.ros.run()
-        _wait_until_connected(self.ros)
+        self.ros = get_ros(host, port)
 
         self._joint_trajectory_service = roslibpy.Service(
             self.ros, joint_trajectory_service, "datatypes/ApplyJointTrajectory"
@@ -319,12 +311,8 @@ class Write:
         self.close()
 
     def close(self) -> None:
-        """Close the underlying rosbridge connection."""
-        try:
-            if self.ros and self.ros.is_connected:
-                self.ros.terminate()
-        except Exception:
-            pass
+        """Release the shared rosbridge connection; it stays open for other clients."""
+        release_ros(self.ros)
 
     def _remember_trajectory_echo(self, message: dict[str, Any]) -> None:
         with self._echo_lock:

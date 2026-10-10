@@ -27,20 +27,12 @@ Example
 
 from __future__ import annotations
 
-import time
 from dataclasses import dataclass
 from typing import Any
 
 import roslibpy
 
-
-def _wait_until_connected(ros: roslibpy.Ros, timeout: float = 5.0) -> None:
-    start = time.time()
-    while not ros.is_connected and time.time() - start < timeout:
-        time.sleep(0.01)
-    if not ros.is_connected:
-        raise ConnectionError(f"ROSBridge not connected after {timeout:.1f}s")
-
+from pib_sdk.ros_client import get_ros, release_ros
 
 # The node answers success=true for every stop it ignores, so the reply text is the
 # only signal that distinguishes "done" from "not mine" (measured on the pib). Treat
@@ -128,10 +120,8 @@ class Models:
         connect_timeout: float = 5.0,
     ) -> None:
         self._owner = owner if owner is not None else _default_owner()
-        self.ros = roslibpy.Ros(host=host, port=port)
         try:
-            self.ros.run()
-            _wait_until_connected(self.ros, timeout=connect_timeout)
+            self.ros = get_ros(host, port, timeout=connect_timeout)
         except ConnectionError:
             raise
         except Exception as exc:  # noqa: BLE001 - re-raised as the documented error type
@@ -159,12 +149,8 @@ class Models:
         self.close()
 
     def close(self) -> None:
-        """Close the underlying rosbridge connection."""
-        try:
-            if self.ros and self.ros.is_connected:
-                self.ros.terminate()
-        except Exception:
-            pass
+        """Release the shared rosbridge connection; it stays open for other clients."""
+        release_ros(self.ros)
 
     def list_models(self, timeout: float = 10.0) -> list[ModelInfo]:
         """Return every model the camera node reports."""
