@@ -86,10 +86,12 @@ two servers on the robot:
 | rosbridge | 9090 | WebSocket (JSON) | real-time: motor commands, telemetry, live assistant/program control |
 | pib-backend | 5000 | HTTP (REST/JSON) | durable data: poses, programs, button bindings, settings, personalities, chats |
 
-`pib_sdk.robot.Robot` centralizes the host, ports, and lifecycle. In the
-current implementation its `Write`, `Speak`, and `Telemetry` children each
-own a separate rosbridge WebSocket; `BackendClient` opens HTTP requests as
-needed. It does not multiplex a single connection.
+`pib_sdk.robot.Robot` centralizes the host, ports, and lifecycle. Its `Write`,
+`Speak`, and `Telemetry` children, like every other rosbridge client in the
+SDK, share the one process-wide rosbridge WebSocket for that host and port
+from `pib_sdk.ros_client`; `BackendClient` opens HTTP requests as needed.
+roslibpy's reactor can be started only once per process, so a client's
+`close()` releases the shared connection and never terminates it.
 
 ---
 
@@ -483,8 +485,8 @@ steady state, not a bug.
 
 ## Deep dive: IMU — latest sample over `/imu`
 
-`IMU` is pattern 3b with no public subscribe API. Construction opens a
-rosbridge WebSocket, subscribes to `/imu` (`sensor_msgs/Imu`), and stores
+`IMU` is pattern 3b with no public subscribe API. Construction takes the
+shared rosbridge WebSocket, subscribes to `/imu` (`sensor_msgs/Imu`), and stores
 the last well-formed acceleration and angular-velocity vectors. `latest()`
 reads that cache and returns immediately.
 

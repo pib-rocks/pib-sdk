@@ -20,10 +20,11 @@ Example
 from __future__ import annotations
 
 import base64
-import time
 from enum import IntEnum
 
 import roslibpy
+
+from pib_sdk.ros_client import get_ros, release_ros
 
 # Mirrors pib-backend's ImageId.msg -- PIB_EYES_ANIMATED is the one built-in image.
 _IMAGE_ID_NONE = 0
@@ -39,23 +40,13 @@ class ImageFormat(IntEnum):
     JPEG = 2
 
 
-def _wait_until_connected(ros: roslibpy.Ros, timeout: float = 5.0) -> None:
-    start = time.time()
-    while not ros.is_connected and time.time() - start < timeout:
-        time.sleep(0.01)
-    if not ros.is_connected:
-        raise ConnectionError(f"ROSBridge not connected after {timeout:.1f}s")
-
-
 class Display:
     """Publishes images to pib's screen over rosbridge."""
 
     def __init__(
         self, host: str = "localhost", port: int = 9090, display_image_topic: str = "display_image"
     ) -> None:
-        self.ros = roslibpy.Ros(host=host, port=port)
-        self.ros.run()
-        _wait_until_connected(self.ros)
+        self.ros = get_ros(host, port)
         self._display_image_topic = roslibpy.Topic(
             self.ros, display_image_topic, "datatypes/DisplayImage"
         )
@@ -67,12 +58,8 @@ class Display:
         self.close()
 
     def close(self) -> None:
-        """Close the underlying rosbridge connection."""
-        try:
-            if self.ros and self.ros.is_connected:
-                self.ros.terminate()
-        except Exception:
-            pass
+        """Release the shared rosbridge connection; it stays open for other clients."""
+        release_ros(self.ros)
 
     def show_animated_eyes(self) -> None:
         """Show pib's built-in animated-eyes image."""

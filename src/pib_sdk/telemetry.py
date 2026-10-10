@@ -39,15 +39,9 @@ from typing import Any
 
 import roslibpy
 
+from pib_sdk.ros_client import get_ros, release_ros
+
 _INTERNAL_UNITS_PER_DEGREE = 100.0
-
-
-def _wait_until_connected(ros: roslibpy.Ros, timeout: float = 5.0) -> None:
-    start = time.time()
-    while not ros.is_connected and time.time() - start < timeout:
-        time.sleep(0.01)
-    if not ros.is_connected:
-        raise ConnectionError(f"ROSBridge not connected after {timeout:.1f}s")
 
 
 class Telemetry:
@@ -64,9 +58,7 @@ class Telemetry:
         get_position_service: str = "get_joint_position",
         motor_current_topic: str = "motor_current",
     ) -> None:
-        self.ros = roslibpy.Ros(host=host, port=port)
-        self.ros.run()
-        _wait_until_connected(self.ros)
+        self.ros = get_ros(host, port)
 
         self._get_position_service = roslibpy.Service(
             self.ros, get_position_service, "datatypes/GetJointPosition"
@@ -87,12 +79,8 @@ class Telemetry:
         self.close()
 
     def close(self) -> None:
-        """Close the underlying rosbridge connection."""
-        try:
-            if self.ros and self.ros.is_connected:
-                self.ros.terminate()
-        except Exception:
-            pass
+        """Release the shared rosbridge connection; it stays open for other clients."""
+        release_ros(self.ros)
 
     # -- position (last commanded target, not live sensor feedback) ------ #
     def get_position_deg(self, motor_name: str, timeout: float = 5.0) -> float:

@@ -56,16 +56,16 @@ def test_robot_backend_uses_its_own_port(fake_roslibpy):
     assert robot.backend.base_url == "http://pib.local:5050"
 
 
-def test_robot_close_closes_every_rosbridge_connection(fake_roslibpy):
+def test_robot_close_leaves_the_shared_rosbridge_connection_open(fake_roslibpy):
     robot = Robot(host="pib.local")
 
     robot.close()
 
-    assert len(_TERMINATE_CALLS) == 3
+    assert _TERMINATE_CALLS == []
 
 
-def test_robot_context_manager_closes_on_exit(fake_roslibpy):
+def test_robot_context_manager_leaves_the_shared_connection_open_on_exit(fake_roslibpy):
     with Robot(host="pib.local"):
         pass
 
-    assert len(_TERMINATE_CALLS) == 3
+    assert _TERMINATE_CALLS == []

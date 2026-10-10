@@ -24,13 +24,7 @@ from collections.abc import Callable
 
 import roslibpy
 
-
-def _wait_until_connected(ros: roslibpy.Ros, timeout: float = 5.0) -> None:
-    start = time.time()
-    while not ros.is_connected and time.time() - start < timeout:
-        time.sleep(0.01)
-    if not ros.is_connected:
-        raise ConnectionError(f"ROSBridge not connected after {timeout:.1f}s")
+from pib_sdk.ros_client import get_ros, release_ros
 
 
 class Relay:
@@ -43,9 +37,7 @@ class Relay:
         set_state_service: str = "set_solid_state_relay_state",
         state_topic: str = "solid_state_relay_state",
     ) -> None:
-        self.ros = roslibpy.Ros(host=host, port=port)
-        self.ros.run()
-        _wait_until_connected(self.ros)
+        self.ros = get_ros(host, port)
 
         self._set_state_service = roslibpy.Service(
             self.ros, set_state_service, "datatypes/SetSolidStateRelay"
@@ -66,12 +58,8 @@ class Relay:
         self.close()
 
     def close(self) -> None:
-        """Close the underlying rosbridge connection."""
-        try:
-            if self.ros and self.ros.is_connected:
-                self.ros.terminate()
-        except Exception:
-            pass
+        """Release the shared rosbridge connection; it stays open for other clients."""
+        release_ros(self.ros)
 
     def set(self, turned_on: bool, timeout: float = 5.0) -> bool:
         """Turn the relay on or off; returns whether the backend reported success."""

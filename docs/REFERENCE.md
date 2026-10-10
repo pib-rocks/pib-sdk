@@ -27,6 +27,7 @@ Two things are true of every module here:
 - [`pib_sdk.telemetry`](#pib_sdktelemetry) — motor position/current readback
 - [`pib_sdk.backend`](#pib_sdkbackend) — low-level REST client
 - [`pib_sdk.robot`](#pib_sdkrobot) — bundles the four core clients
+- [`pib_sdk.ros_client`](#pib_sdkros_client) — the shared rosbridge connection
 - [`pib_sdk.features.drawing`](#pib_sdkfeaturesdrawing) — image-to-trajectory drawing
 - [`pib_sdk.features.poses`](#pib_sdkfeaturesposes) — poses from Cerebra
 - [`pib_sdk.features.programs`](#pib_sdkfeaturesprograms) — run Blockly programs
@@ -494,9 +495,9 @@ read/write, not live telemetry; see `pib_sdk.telemetry` for that.
 ## `pib_sdk.robot`
 
 `Robot` bundles `Write`, `Speak`, `Telemetry`, and `BackendClient` behind one
-`host` and lifecycle. It constructs three separate rosbridge WebSockets, one
-for each live client; it is not a connection multiplexer. `BackendClient`
-opens stateless HTTP requests.
+`host` and lifecycle. Its three live clients share the one rosbridge
+WebSocket that [`pib_sdk.ros_client`](#pib_sdkros_client) keeps for that host
+and port. `BackendClient` opens stateless HTTP requests.
 
 ```python
 from pib_sdk import right_arm
@@ -513,10 +514,36 @@ with Robot(host="pib.local") as robot:
 port if non-default. Construction can raise the connection errors of any
 live child, and a later failure can leave earlier children open. Attributes
 are `write: Write`, `speak: Speak`, `telemetry: Telemetry`, and
-`backend: BackendClient`. `close() -> None` closes the three live clients.
+`backend: BackendClient`. `close() -> None` closes the three live clients,
+which releases the shared connection without disconnecting it.
 Nothing here is new behavior: use the four classes
 directly instead if you only need one or two, or want different hosts/ports
 for each (e.g. an SDK running somewhere other than the robot's own network).
+
+---
+
+## `pib_sdk.ros_client`
+
+Every rosbridge client in the SDK (`Write`, `Speak`, `Telemetry`, `Models`,
+and the `features` clients) takes its connection from here: one
+`roslibpy.Ros` per `(host, port)` for the whole process. roslibpy runs all
+clients on one twisted reactor that can be started only once per process, so
+a client's `close()` / `__exit__` releases the shared connection instead of
+terminating it. Two `with` blocks in a row, e.g. `with Telemetry(...)`
+followed by `with Write(...)`, therefore reuse the same open connection.
+
+- `get_ros(host="localhost", port=9090, timeout=5.0) -> roslibpy.Ros` — the
+  shared client for that endpoint, created and connected on first use. The
+  first client starts the reactor; a client for another endpoint connects on
+  the running reactor. Raises `ConnectionError` if it is not connected within
+  `timeout` seconds.
+- `release_ros(ros) -> None` — hand a client back. Never disconnects.
+- `terminate_all() -> None` — terminate every shared client, for application
+  shutdown or tests. It stops the reactor, which roslibpy cannot restart in
+  the same process.
+
+You only need this module to share the connection with your own
+`roslibpy.Service`/`roslibpy.Topic` objects, or to shut down explicitly.
 
 ---
 

@@ -31,15 +31,9 @@ from typing import Any
 
 import roslibpy
 
+from pib_sdk.ros_client import get_ros, release_ros
+
 _ORIENTATION_UNAVAILABLE = -1.0
-
-
-def _wait_until_connected(ros: roslibpy.Ros, timeout: float = 5.0) -> None:
-    start = time.time()
-    while not ros.is_connected and time.time() - start < timeout:
-        time.sleep(0.01)
-    if not ros.is_connected:
-        raise ConnectionError(f"ROSBridge not connected after {timeout:.1f}s")
 
 
 @dataclass(frozen=True)
@@ -125,9 +119,7 @@ class IMU:
         imu_topic: str = "/imu",
         imu_message_type: str = "sensor_msgs/Imu",
     ) -> None:
-        self.ros = roslibpy.Ros(host=host, port=port)
-        self.ros.run()
-        _wait_until_connected(self.ros)
+        self.ros = get_ros(host, port)
 
         self._lock = threading.Lock()
         self._acceleration_m_s2: Vector3 | None = None
@@ -147,12 +139,8 @@ class IMU:
         self.close()
 
     def close(self) -> None:
-        """Close the underlying rosbridge connection."""
-        try:
-            if self.ros and self.ros.is_connected:
-                self.ros.terminate()
-        except Exception:
-            pass
+        """Release the shared rosbridge connection; it stays open for other clients."""
+        release_ros(self.ros)
 
     def latest(self) -> IMUData | None:
         """Return the most recent sample, or ``None`` if none has arrived yet.
