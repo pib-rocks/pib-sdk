@@ -244,7 +244,7 @@
   },
   "schema_version": 1,
   "source": {
-    "sdk_version": "0.5.5",
+    "sdk_version": "0.5.6",
     "urdf_file": "pib_model.urdf",
     "urdf_sha256": "a35af35f41641040e181a2b43acd4dd4d8e3c63d30c3e925c7a0ffb0e3a9b433"
   },
