@@ -47,7 +47,7 @@ license-files = []
 where = ["src"]
 
 [tool.setuptools.package-data]
-pib_sdk = ["data/*.urdf"]
+pib_sdk = ["data/*.urdf", "data/*.json"]
 
 [tool.ruff]
 line-length = 100
