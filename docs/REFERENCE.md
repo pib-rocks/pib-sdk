@@ -297,6 +297,9 @@ PYTHONPATH=src python scripts/build_motion_model.py --check   # CI drift guard
 
 Both are exported from `pib_sdk` as `load_motion_model` and `prompt_text`.
 
+Documented API of the module itself:
+
+
 ---
 
 ## `pib_sdk.speech`
@@ -995,3 +998,12 @@ thread; `latest()` itself does not raise for missing data.
 |---|---|---|
 | `latest` | `() -> IMUData | None` | returns `None` until a well-formed sample arrives; does not block or time out |
 | `close` | `() -> None` | connection teardown errors are swallowed |
+
+## `pib_sdk.motion_model`
+
+A compact motion model for assistant prompts, generated from the SDK's own URDF and chain definitions.
+
+* `load_motion_model` - read the packaged `data/motion_model.json`.
+* `build_motion_model` - regenerate the model from the URDF and chain definitions.
+* `serialize_motion_model` - deterministic JSON text for a model dict.
+* `prompt_text` - compact summary of the model for an assistant prompt.
