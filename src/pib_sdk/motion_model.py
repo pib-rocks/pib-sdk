@@ -14,8 +14,6 @@ import xml.etree.ElementTree as ElementTree
 from pathlib import Path
 from typing import Any
 
-import tomllib
-
 from pib_sdk.robot_model import DEFAULT_URDF_PATH, HEAD, LEFT_ARM, RIGHT_ARM, ChainDefinition
 
 SCHEMA_VERSION = 1
@@ -139,10 +137,23 @@ def _parse_urdf_joints(urdf_path: Path) -> dict[str, dict[str, Any]]:
     return joints
 
 
-def _sdk_version() -> str:
-    pyproject = Path(__file__).resolve().parents[2] / "pyproject.toml"
-    data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
-    return str(data["project"]["version"])
+def _sdk_version(pyproject: Path | None = None) -> str:
+    """Return the pib-sdk version, also on interpreters without ``tomllib`` (3.9/3.10)."""
+    pyproject = pyproject or Path(__file__).resolve().parents[2] / "pyproject.toml"
+    if pyproject.is_file():
+        try:
+            import tomllib
+        except ModuleNotFoundError:  # pragma: no cover - Python < 3.11
+            tomllib = None  # type: ignore[assignment]
+        if tomllib is not None:
+            data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+            return str(data["project"]["version"])
+    try:
+        from importlib.metadata import PackageNotFoundError, version
+
+        return version("pib-sdk")
+    except PackageNotFoundError:  # pragma: no cover - dev checkout without install
+        return "unknown"
 
 
 def _sha256_file(path: Path) -> str:

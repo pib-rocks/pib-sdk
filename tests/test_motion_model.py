@@ -111,3 +111,12 @@ def test_serialize_uses_sorted_keys_and_sig_figs():
     joint = chain["joints"][0]
     for value in joint["axis"]:
         assert math.isfinite(value)
+
+
+def test_sdk_version_survives_a_missing_pyproject(tmp_path):
+    """Python 3.9/3.10 has no tomllib and a wheel has no pyproject: never crash."""
+    from pib_sdk.motion_model import _sdk_version
+
+    value = _sdk_version(tmp_path / "pyproject.toml")
+    assert value
+    assert value != "None"
