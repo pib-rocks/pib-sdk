@@ -327,7 +327,9 @@ the target.
 
 ## Using a different or updated URDF
 
-The package ships pib's V3 URDF at `pib_sdk/data/pib_model.urdf`. To use another
+The package ships pib's V3 URDF at `pib_sdk/data/pib_model.urdf`; for a compact
+joint summary suitable for voice-assistant prompts, see
+[Motion model for prompts](docs/REFERENCE.md#motion-model-for-prompts). To use another
 file — a newer revision, or a variant of your robot — point the loader at it:
 
 ```python
