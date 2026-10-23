@@ -40,7 +40,6 @@ from pib_sdk.kinematics import (
     pose_to_xyz_rpy,
 )
 from pib_sdk.models import ModelError, ModelInfo, ModelResult, Models
-from pib_sdk.motion_model import load_motion_model, prompt_text
 from pib_sdk.robot_model import (
     HEAD,
     LEFT_ARM,
@@ -56,7 +55,7 @@ from pib_sdk.robot_model import (
 )
 from pib_sdk.speech import Speak
 
-__version__ = "0.5.6"
+__version__ = "0.5.7"
 
 __all__ = [
     # kinematics
@@ -83,8 +82,6 @@ __all__ = [
     "get_arm_model",
     "get_head_model",
     "set_urdf_path",
-    "load_motion_model",
-    "prompt_text",
     # control
     "Write",
     "All",

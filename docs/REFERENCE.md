@@ -277,29 +277,6 @@ chain = build_chain_model(RIGHT_ARM, "/path/to/pib.urdf")
 print(chain.joint_names, chain.joint_limits_deg)
 ```
 
-### Motion model for prompts
-
-The bundled URDF is too large to paste into a voice-assistant chat message.
-`pib_sdk.motion_model` ships a pre-generated `data/motion_model.json` (commandable
-chains only: joint axes, degree limits, motor names, named postures) plus helpers
-to load and render it. The JSON artifact and `prompt_text()` output are each kept
-under **16 KiB** so they fit comfortably in assistant context.
-
-`load_motion_model() -> dict` reads the packaged JSON.
-`prompt_text() -> str` returns a compact multi-line summary for prompts.
-
-Regenerate after URDF or chain-definition changes:
-
-```bash
-PYTHONPATH=src python scripts/build_motion_model.py
-PYTHONPATH=src python scripts/build_motion_model.py --check   # CI drift guard
-```
-
-Both are exported from `pib_sdk` as `load_motion_model` and `prompt_text`.
-
-Documented API of the module itself:
-
-
 ---
 
 ## `pib_sdk.speech`
@@ -998,12 +975,3 @@ thread; `latest()` itself does not raise for missing data.
 |---|---|---|
 | `latest` | `() -> IMUData | None` | returns `None` until a well-formed sample arrives; does not block or time out |
 | `close` | `() -> None` | connection teardown errors are swallowed |
-
-## `pib_sdk.motion_model`
-
-A compact motion model for assistant prompts, generated from the SDK's own URDF and chain definitions.
-
-* `load_motion_model` - read the packaged `data/motion_model.json`.
-* `build_motion_model` - regenerate the model from the URDF and chain definitions.
-* `serialize_motion_model` - deterministic JSON text for a model dict.
-* `prompt_text` - compact summary of the model for an assistant prompt.

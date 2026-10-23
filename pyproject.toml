@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pib-sdk"
-version = "0.5.6"
+version = "0.5.7"
 description = "SDK to control pib humanoid robot via rosbridge and solve its kinematics with Pinocchio from the official URDF"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -47,7 +47,7 @@ license-files = []
 where = ["src"]
 
 [tool.setuptools.package-data]
-pib_sdk = ["data/*.urdf", "data/*.json"]
+pib_sdk = ["data/*.urdf"]
 
 [tool.ruff]
 line-length = 100
