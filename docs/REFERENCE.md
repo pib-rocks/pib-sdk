@@ -232,11 +232,17 @@ the angle between its axis and the next link's segment:
 The roll axis therefore follows the forearm as the elbow bends: it is 11.0° off
 the segment for elbow 0°, 30°, 60° and 90°, with the same 30.0 mm offset, i.e.
 the axis **rotates with the segment** and never stays diagonal in the base frame.
-That 11.0° / 30.0 mm residual is a property of the exported geometry, not of the
-reading: rotating `forearm_left` by 30° displaces the wrist by 15.5 mm, which a
-pure roll about the forearm centreline would not do. A physical check (command a
-roll and watch whether the hand orbits) decides whether the URDF placement or the
-expectation is off.
+
+**Known model defect (PR-2055).** That 11.0° / 30.0 mm residual is wrong, and it
+was measured against the robot rather than argued: commanding
+`lower_arm_left_rotation` +30° on pib5advanced reached exactly +3000 cd with no
+other joint moving, and the hand visibly turns about its own axis **without any
+lateral offset**. A pure roll about the forearm centreline is therefore what the
+hardware does, while this geometry predicts a 15.5 mm wrist displacement
+(chord `2 r sin(theta/2)` with `r = 30 mm`). So the exported joint placement is
+imprecise: forward kinematics of the wrist and hand carry up to ~15 mm of error
+after a 30° roll, vanishing at zero roll. PR-2055 fixes the placement in the
+Onshape export; this paragraph goes away with the corrected URDF.
 
 ### `ChainKinematics`
 
