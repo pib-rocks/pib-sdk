@@ -4,9 +4,11 @@ import shutil
 from dataclasses import replace
 
 import numpy as np
+import pinocchio as pin
 import pytest
 
 from pib_sdk import robot_model
+from pib_sdk.kinematics import camera_pose
 from pib_sdk.robot_model import (
     DEFAULT_URDF_PATH,
     HEAD,
@@ -85,8 +87,12 @@ def test_named_configurations_respect_joint_limits():
         lower_deg, upper_deg = chain.joint_limits_deg
         for name in definition.named_configurations_deg:
             configuration = chain.named_configuration_deg(name)
-            assert np.all(configuration >= lower_deg - 1e-9), f"{definition.name}:{name}"
-            assert np.all(configuration <= upper_deg + 1e-9), f"{definition.name}:{name}"
+            assert np.all(
+                configuration >= lower_deg - 1e-9
+            ), f"{definition.name}:{name}"
+            assert np.all(
+                configuration <= upper_deg + 1e-9
+            ), f"{definition.name}:{name}"
 
 
 def test_definition_validates_motor_name_count():
@@ -100,7 +106,9 @@ def test_definition_validates_motor_name_count():
 
 
 def test_missing_joint_raises_with_available_names():
-    bad = replace(RIGHT_ARM, urdf_joint_names=RIGHT_ARM.urdf_joint_names[:-1] + ("no_such",))
+    bad = replace(
+        RIGHT_ARM, urdf_joint_names=RIGHT_ARM.urdf_joint_names[:-1] + ("no_such",)
+    )
     with pytest.raises(ValueError, match="no_such"):
         build_chain_model(bad)
 
@@ -114,6 +122,27 @@ def test_missing_tip_frame_raises_with_available_names():
 def test_missing_urdf_file_raises_file_not_found(tmp_path):
     with pytest.raises(FileNotFoundError, match="URDF not found"):
         build_chain_model(RIGHT_ARM, urdf_path=tmp_path / "nowhere.urdf")
+
+
+def test_camera_frame_correction_applied_once_per_cached_model():
+    """Building the head chain twice must not double-apply CAMERA_FRAME_CORRECTION."""
+    first = get_head_model()
+    second = get_head_model()
+    assert first is second
+
+    def camera_orientation(chain):
+        data = chain.create_data()
+        q = pin.neutral(chain.model)
+        pin.forwardKinematics(chain.model, data, q)
+        pin.updateFramePlacements(chain.model, data)
+        return data.oMf[chain.tip_frame_id].rotation.copy()
+
+    np.testing.assert_allclose(
+        camera_orientation(first), camera_orientation(second), atol=1e-12
+    )
+    np.testing.assert_allclose(
+        camera_orientation(first), camera_pose().rotation, atol=1e-12
+    )
 
 
 def test_set_urdf_path_switches_the_source(tmp_path):
