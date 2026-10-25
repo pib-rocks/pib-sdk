@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import numpy as np
 import pytest
 
 import pib_sdk.features.poses as poses_module
@@ -241,10 +242,15 @@ def test_play_pose_sequence_timed_emits_software_trajectory_shape(monkeypatch):
     points = trajectory["points"]
     assert trajectory["joint_names"] == ["elbow_right", "wrist_right"]
     assert len(points) == 2
-    assert [point["positions"] for point in points] == [
-        [4500.0, -1000.0],
-        [0.0, -1000.0],
-    ]
+    np.testing.assert_allclose(
+        [point["positions"] for point in points],
+        [
+            [np.deg2rad(45.0), np.deg2rad(-10.0)],
+            [0.0, np.deg2rad(-10.0)],
+        ],
+        rtol=0,
+        atol=1e-12,
+    )
     assert all(len(point["positions"]) == len(trajectory["joint_names"]) for point in points)
     assert points[0]["time_from_start"] == {"sec": 1, "nanosec": 0}
     assert points[1]["time_from_start"] == {"sec": 1, "nanosec": 500_000_000}

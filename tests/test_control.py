@@ -5,6 +5,7 @@ These cover the pure argument-parsing helpers behind ``Write.move`` /
 kinematics chains and the control motor groups.
 """
 
+import numpy as np
 import pytest
 
 from conftest import patch_roslibpy
@@ -204,14 +205,24 @@ def test_send_timed_trajectory_uses_standard_layout(fake_roslibpy):
     points = trajectory["points"]
     assert trajectory["joint_names"] == ["elbow_right", "wrist_right"]
     assert len(points) == 2
-    assert points[0]["positions"] == [4500.0, -1000.0]
-    assert points[1]["positions"] == [0.0, -500.0]
+    np.testing.assert_allclose(
+        points[0]["positions"],
+        [np.deg2rad(45.0), np.deg2rad(-10.0)],
+        rtol=0,
+        atol=1e-12,
+    )
+    np.testing.assert_allclose(
+        points[1]["positions"],
+        [0.0, np.deg2rad(-5.0)],
+        rtol=0,
+        atol=1e-12,
+    )
     assert all(len(point["positions"]) == 2 for point in points)
     assert points[0]["time_from_start"] == {"sec": 1, "nanosec": 0}
     assert points[1]["time_from_start"] == {"sec": 2, "nanosec": 500_000_000}
 
 
-def test_move_still_sends_legacy_one_point_per_motor(fake_roslibpy):
+def test_move_sends_radian_positions_on_rosbridge(fake_roslibpy):
     _topics, services = fake_roslibpy
     writer = Write(host="localhost")
     services["/apply_joint_trajectory"].default_response = {"successful": True}
@@ -222,6 +233,22 @@ def test_move_still_sends_legacy_one_point_per_motor(fake_roslibpy):
     points = trajectory["points"]
     assert trajectory["joint_names"] == ["elbow_right", "wrist_right"]
     assert len(points) == 2
-    assert points[0]["positions"] == [4500.0]
-    assert points[1]["positions"] == [-1000.0]
+    np.testing.assert_allclose(points[0]["positions"], [np.deg2rad(45.0)], rtol=0, atol=1e-12)
+    np.testing.assert_allclose(points[1]["positions"], [np.deg2rad(-10.0)], rtol=0, atol=1e-12)
     assert points[0]["time_from_start"] == {"sec": 0, "nanosec": 1_000_000}
+
+
+def test_degrees_to_radians_matches_numpy_for_move_range():
+    assert control._degrees_to_radians(45.0) == np.deg2rad(45.0)
+    assert control._degrees_to_radians(-90.0) == np.deg2rad(-90.0)
+
+
+def test_kinematics_deg_wrappers_still_match_radian_conversion():
+    """Unchanged by rosbridge unit change; guards against accidental drift."""
+    from pib_sdk.kinematics import fk, fk_deg
+
+    q_deg = [0.0, 45.0, 0.0, 0.0, 90.0, 0.0]
+    pose_rad = fk("right", np.deg2rad(q_deg))
+    pose_deg = fk_deg("right", q_deg)
+    np.testing.assert_allclose(pose_rad.translation, pose_deg.translation, atol=1e-9)
+    np.testing.assert_allclose(pose_rad.rotation, pose_deg.rotation, atol=1e-9)

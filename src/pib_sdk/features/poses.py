@@ -36,8 +36,9 @@ from pib_sdk.backend import BackendClient
 from pib_sdk.control import Write
 from pib_sdk.telemetry import Telemetry
 
-# pib-backend stores each pose's joint values in the same internal units as
-# the `/apply_joint_trajectory` ROS service (hundredths of a degree) -- see
+# pib-backend stores each pose's joint values in centidegrees (hundredths of a
+# degree). ``Write.send_timed_trajectory`` accepts those units and converts to
+# radians on rosbridge -- see
 # pib-backend's startup_pose_executor.py, which forwards a pose's stored
 # `position` straight into a JointTrajectoryPoint with no scaling.
 _INTERNAL_UNITS_PER_DEGREE = 100.0

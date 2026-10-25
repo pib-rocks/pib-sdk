@@ -11,8 +11,10 @@
 * a :meth:`Write.move` API accepting either one angle applied to every selected
   motor (*uniform mode*) or one angle per motor (*vector mode*).
 
-Angles are given in degrees within ``[-90, 90]`` and converted to the firmware's
-internal hundredths-of-a-degree units.
+:class:`Write.move` accepts angles in degrees within ``[-90, 90]``; joint
+positions on rosbridge (``/apply_joint_trajectory`` and ``/joint_trajectory``)
+are sent in **radians**. Kinematics elsewhere in the SDK uses radians
+canonically (see :mod:`pib_sdk.kinematics`); positions remain millimetres.
 """
 
 from __future__ import annotations
@@ -24,6 +26,7 @@ import threading
 import time
 from typing import Any
 
+import numpy as np
 import roslibpy
 
 from pib_sdk.ros_client import get_ros, release_ros
@@ -182,10 +185,22 @@ def _expand_motor_specs(specs: list[str | _Token]) -> list[str]:
 
 
 def _degrees_to_internal_units(position_deg: float) -> float:
-    """Convert degrees in ``[-90, 90]`` to internal hundredths of a degree."""
+    """Convert degrees in ``[-90, 90]`` to pib-backend centidegree integers (×100)."""
     if not -90.0 <= float(position_deg) <= 90.0:
         raise ValueError(f"position_deg must be between -90 and 90 (got {position_deg})")
     return float(round(float(position_deg) * 100.0))
+
+
+def _degrees_to_radians(position_deg: float) -> float:
+    """Convert public move() degrees in ``[-90, 90]`` to radians for rosbridge."""
+    if not -90.0 <= float(position_deg) <= 90.0:
+        raise ValueError(f"position_deg must be between -90 and 90 (got {position_deg})")
+    return float(np.deg2rad(float(position_deg)))
+
+
+def _centidegrees_to_radians(position_centideg: float) -> float:
+    """Convert pib centidegrees (hundredths of a degree) to radians for rosbridge."""
+    return float(np.deg2rad(float(position_centideg) / 100.0))
 
 
 def _seconds_to_time_from_start(seconds: float) -> dict[str, int]:
@@ -258,6 +273,8 @@ def _parse_uniform_move(
 # --------------------------------------------------------------------------- #
 class Write:
     """Service-based motor control over rosbridge.
+
+    Public ``move`` angles are degrees; joint positions on rosbridge are radians.
 
     Example
     -------
@@ -427,10 +444,10 @@ class Write:
             joint_names, uniform_deg = _parse_uniform_move(list(args))
             degrees = [uniform_deg] * len(joint_names)
 
-        positions_internal = [_degrees_to_internal_units(angle) for angle in degrees]
-        ok = self._send_joint_trajectory(joint_names, positions_internal)
+        positions_rad = [_degrees_to_radians(angle) for angle in degrees]
+        ok = self._send_joint_trajectory(joint_names, positions_rad)
         if ok and self.verify_echo:
-            ok = self._await_trajectory_echo(joint_names, positions_internal)
+            ok = self._await_trajectory_echo(joint_names, positions_rad)
         return ok
 
     def send_timed_trajectory(
@@ -440,11 +457,12 @@ class Write:
     ) -> bool:
         """Send a timed via-point JointTrajectory in the standard layout.
 
-        ``waypoints[i]`` is ``(positions_internal_per_joint, time_from_start_seconds)``
+        ``waypoints[i]`` is ``(positions_centideg_per_joint, time_from_start_seconds)``
         where the time is absolute from trajectory start. Each point carries one
         position per name in ``joint_names`` plus a real ``time_from_start``, which
         is the shape pib-backend interpolates through instead of stopping at each
-        pose. Positions are internal units (hundredths of a degree).
+        pose. Positions are pib centidegrees (hundredths of a degree), matching
+        pib-backend storage; they are converted to radians before the rosbridge call.
         """
         if not joint_names:
             raise ValueError("joint_names must not be empty")
@@ -452,12 +470,13 @@ class Write:
             raise ValueError("waypoints must not be empty")
 
         points: list[dict[str, Any]] = []
-        for positions_internal, time_from_start_seconds in waypoints:
-            if len(positions_internal) != len(joint_names):
+        for positions_centideg, time_from_start_seconds in waypoints:
+            if len(positions_centideg) != len(joint_names):
                 raise ValueError("each waypoint must have one position per joint_name")
+            positions_rad = [_centidegrees_to_radians(p) for p in positions_centideg]
             points.append(
                 {
-                    "positions": [float(position) for position in positions_internal],
+                    "positions": positions_rad,
                     "velocities": [],
                     "accelerations": [],
                     "effort": [],
@@ -501,10 +520,10 @@ class Write:
         return self.move(hand, angle)
 
     @staticmethod
-    def _trajectory_point(position_internal: float) -> dict[str, Any]:
+    def _trajectory_point(position_rad: float) -> dict[str, Any]:
         # Exactly one value per point; the node reads positions[0].
         return {
-            "positions": [float(position_internal)],
+            "positions": [float(position_rad)],
             "velocities": [],
             "accelerations": [],
             "effort": [],
@@ -512,30 +531,30 @@ class Write:
         }
 
     def _send_joint_trajectory(
-        self, joint_names: list[str], positions_internal: list[float]
+        self, joint_names: list[str], positions_rad: list[float]
     ) -> bool:
         """Send one ApplyJointTrajectory request for all joints, with per-joint fallback."""
-        assert len(joint_names) == len(positions_internal), "names/positions length mismatch"
+        assert len(joint_names) == len(positions_rad), "names/positions length mismatch"
 
         request = roslibpy.ServiceRequest(
             {
                 "joint_trajectory": {
                     "joint_names": list(joint_names),
-                    "points": [self._trajectory_point(p) for p in positions_internal],
+                    "points": [self._trajectory_point(p) for p in positions_rad],
                 }
             }
         )
         try:
             response = self._joint_trajectory_service.call(request, timeout=2.5)
             ok = bool(response.get("successful", False))
-            logger.debug("move(%s -> %s) -> %s", joint_names, positions_internal, ok)
+            logger.debug("move(%s -> %s rad) -> %s", joint_names, positions_rad, ok)
             if ok or len(joint_names) == 1:
                 return ok
 
             # Batched request rejected: retry once, one joint at a time.
             logger.warning("Batched joint trajectory rejected; falling back to per-joint sends.")
             all_ok = True
-            for name, position in zip(joint_names, positions_internal):
+            for name, position in zip(joint_names, positions_rad):
                 single_request = roslibpy.ServiceRequest(
                     {
                         "joint_trajectory": {
@@ -552,11 +571,11 @@ class Write:
             return False
 
     def _await_trajectory_echo(
-        self, names: list[str], positions_internal: list[float], timeout: float = 0.15
+        self, names: list[str], positions_rad: list[float], timeout: float = 0.15
     ) -> bool:
         """Best-effort wait for a joint-trajectory echo matching the command."""
         deadline = time.time() + timeout
-        expected_positions = [float(p) for p in positions_internal]
+        expected_positions = [float(p) for p in positions_rad]
         while time.time() < deadline:
             with self._echo_lock:
                 message = self._last_trajectory_echo
