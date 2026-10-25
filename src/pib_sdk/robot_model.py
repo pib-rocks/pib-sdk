@@ -77,7 +77,9 @@ class ChainDefinition:
     urdf_joint_names: tuple[str, ...]
     motor_names: tuple[str, ...]
     tip_frame: str
-    named_configurations_deg: Mapping[str, tuple[float, ...]] = field(default_factory=dict)
+    named_configurations_deg: Mapping[str, tuple[float, ...]] = field(
+        default_factory=dict
+    )
 
     def __post_init__(self) -> None:
         if len(self.motor_names) != len(self.urdf_joint_names):
@@ -133,7 +135,9 @@ class ChainModel:
     def named_configuration_deg(self, name: str) -> np.ndarray:
         """Return the named joint configuration in degrees."""
         try:
-            return np.asarray(self.definition.named_configurations_deg[name], dtype=float)
+            return np.asarray(
+                self.definition.named_configurations_deg[name], dtype=float
+            )
         except KeyError:
             available = ", ".join(sorted(self.definition.named_configurations_deg))
             raise KeyError(
@@ -222,6 +226,15 @@ _ARM_DEFINITIONS: dict[ArmSide, ChainDefinition] = {
     ArmSide.LEFT: LEFT_ARM,
 }
 
+# Onshape export defect (PR-2045): at zero head pose the camera link frame maps
+# optical axis (+Z) to about +Y in the model base while the camera sits on -Y
+# (robot front), so the raw URDF aims at the body (measured optical axis
+# (0, +1, 0), camera at (-12.7, -82.8, 998.8) mm, angle to the body axis
+# 8.5° with cos +0.989). Rotate 180° about the camera +Y (down) axis so +Z
+# points outward; det stays +1. Remove when PR-2045 lands.
+_CAMERA_LINK_FRAME = "urdf_camera_link"
+CAMERA_FRAME_CORRECTION = pin.SE3(pin.utils.rotate("y", np.pi), np.zeros(3))
+
 _FULL_MODEL_CACHE: dict[Path, pin.Model] = {}
 _CHAIN_MODEL_CACHE: dict[tuple[str, Path], ChainModel] = {}
 
@@ -239,7 +252,25 @@ def set_urdf_path(urdf_path: str | Path) -> None:
 def _resolve_urdf_path(urdf_path: str | Path | None) -> Path:
     if urdf_path is not None:
         return Path(urdf_path).resolve()
-    return Path(os.environ.get(_URDF_PATH_ENVIRONMENT_VARIABLE, DEFAULT_URDF_PATH)).resolve()
+    return Path(
+        os.environ.get(_URDF_PATH_ENVIRONMENT_VARIABLE, DEFAULT_URDF_PATH)
+    ).resolve()
+
+
+def _apply_camera_frame_correction(model: pin.Model) -> None:
+    """Apply :data:`CAMERA_FRAME_CORRECTION` to the bundled camera link frame once."""
+    if not model.existFrame(_CAMERA_LINK_FRAME):
+        return
+    frame_id = model.getFrameId(_CAMERA_LINK_FRAME)
+    frame = model.frames[frame_id]
+    model.frames[frame_id] = frame.__class__(
+        frame.name,
+        frame.parentJoint,
+        frame.parentFrame,
+        frame.placement * CAMERA_FRAME_CORRECTION,
+        frame.type,
+        frame.inertia,
+    )
 
 
 def _load_full_model(path: Path) -> pin.Model:
@@ -251,7 +282,9 @@ def _load_full_model(path: Path) -> pin.Model:
                 f"{DEFAULT_URDF_PATH}; use set_urdf_path(...) or the "
                 f"{_URDF_PATH_ENVIRONMENT_VARIABLE} environment variable to point at another file."
             )
-        _FULL_MODEL_CACHE[path] = pin.buildModelFromUrdf(str(path))
+        model = pin.buildModelFromUrdf(str(path))
+        _apply_camera_frame_correction(model)
+        _FULL_MODEL_CACHE[path] = model
     return _FULL_MODEL_CACHE[path]
 
 
@@ -266,7 +299,9 @@ def _scale_model_lengths(model: pin.Model, scale: float) -> None:
         return
     for index in range(len(model.jointPlacements)):
         placement = model.jointPlacements[index]
-        model.jointPlacements[index] = pin.SE3(placement.rotation, placement.translation * scale)
+        model.jointPlacements[index] = pin.SE3(
+            placement.rotation, placement.translation * scale
+        )
     for frame in model.frames:
         frame.placement.translation *= scale
 
@@ -283,7 +318,11 @@ def build_chain_model(
     path = _resolve_urdf_path(urdf_path)
     full_model = _load_full_model(path)
 
-    missing = [name for name in definition.urdf_joint_names if not full_model.existJointName(name)]
+    missing = [
+        name
+        for name in definition.urdf_joint_names
+        if not full_model.existJointName(name)
+    ]
     if missing:
         available = sorted(name for name in full_model.names if name != "universe")
         raise ValueError(
@@ -291,7 +330,9 @@ def build_chain_model(
             f"Available joints: {available}"
         )
 
-    chain_joint_ids = {full_model.getJointId(name) for name in definition.urdf_joint_names}
+    chain_joint_ids = {
+        full_model.getJointId(name) for name in definition.urdf_joint_names
+    }
     joints_to_lock = [
         joint_id
         for joint_id in range(1, full_model.njoints)  # joint 0 is the universe joint
@@ -345,7 +386,9 @@ def coerce_arm_side(side: ArmSide | str) -> ArmSide:
         return ArmSide(str(side).lower())
     except ValueError as error:
         valid = ", ".join(member.value for member in ArmSide)
-        raise ValueError(f"Unknown arm side {side!r}; expected one of: {valid}") from error
+        raise ValueError(
+            f"Unknown arm side {side!r}; expected one of: {valid}"
+        ) from error
 
 
 def get_arm_model(side: ArmSide | str) -> ChainModel:

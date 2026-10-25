@@ -539,7 +539,12 @@ class HeadKinematics(ChainKinematics):
         super().__init__(get_head_model())
 
     def camera_pose(self, pan_rad: float = 0.0, tilt_rad: float = 0.0) -> pin.SE3:
-        """Pose of the camera frame in the base frame for a given head posture (rad)."""
+        """Pose of the camera frame in the base frame for a given head posture (rad).
+
+        The orientation includes :data:`~pib_sdk.robot_model.CAMERA_FRAME_CORRECTION`
+        (180° about camera +Y) applied when the URDF is loaded, so optical +Z
+        points away from the body until the Onshape export is fixed (PR-2045).
+        """
         return self.forward([pan_rad, tilt_rad])
 
     def camera_pose_deg(self, pan_deg: float = 0.0, tilt_deg: float = 0.0) -> pin.SE3:
@@ -673,6 +678,10 @@ def camera_pose(
     tilt_deg: float | None = None,
 ) -> pin.SE3:
     """Pose of the head camera in the base frame (translation in mm, angles in rad).
+
+    The returned pose uses the corrected camera link frame (see
+    :data:`~pib_sdk.robot_model.CAMERA_FRAME_CORRECTION`); this layer is
+    temporary until PR-2045 fixes the bundled URDF export.
 
     Legacy callers may pass ``pan_deg`` / ``tilt_deg`` instead of radian arguments.
 

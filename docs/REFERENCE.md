@@ -257,6 +257,13 @@ two-joint camera chain; its
 kinematics for `turn_head_motor` then `tilt_forward_motor`; `camera_pose_deg`
 is the degree twin.
 
+The bundled URDF export places the camera optical axis toward the body; when
+the model is loaded, `robot_model` applies a one-time
+`CAMERA_FRAME_CORRECTION` (180° rotation about the camera link +Y axis) to
+`urdf_camera_link`. `camera_pose` and `HeadKinematics.camera_pose` therefore
+return poses in that **corrected** camera frame (optical +Z outward on the
+``-Y`` front). Remove this layer when PR-2045 lands.
+
 ### Convenience functions and compatibility classes
 
 | API | Signature, return, and errors |
@@ -265,7 +272,7 @@ is the degree twin.
 | `fk_deg` | Same with joint angles in degrees. |
 | `ik` | `(side, *, xyz, rpy_rad=None, **solver_options) -> np.ndarray`; forwards options and errors to `ChainKinematics.inverse`. |
 | `ik_deg` | Same with `rpy_deg`; returns degrees. |
-| `camera_pose` | `(pan_rad=0.0, tilt_rad=0.0) -> pin.SE3`; one-call head FK. |
+| `camera_pose` | `(pan_rad=0.0, tilt_rad=0.0) -> pin.SE3`; one-call head FK in the corrected camera frame (see above). |
 | `camera_pose_deg` | Same with pan/tilt in degrees. |
 | `get_hand_position_xyz_deg` | Same, taking and returning degrees. |
 | `get_hand_position_xyz` | `(side, *, telemetry_host="localhost", telemetry_port=9090, telemetry=None) -> tuple[float, float, float]` with radians; reads the six last-commanded motor angles and returns hand-tip XYZ in mm. It owns a temporary `Telemetry` only when none is supplied. Raises `KeyError` for missing readings plus connection/service/model errors. This is not encoder feedback. |

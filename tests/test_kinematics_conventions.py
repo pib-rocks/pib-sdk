@@ -118,7 +118,9 @@ def test_deg_wrapper_matches_rad_conversion(rad_call, deg_call):
         return
 
     if hasattr(rad_result, "translation"):
-        np.testing.assert_allclose(rad_result.translation, deg_result.translation, atol=1e-9)
+        np.testing.assert_allclose(
+            rad_result.translation, deg_result.translation, atol=1e-9
+        )
         np.testing.assert_allclose(rad_result.rotation, deg_result.rotation, atol=1e-9)
         return
 
@@ -140,9 +142,13 @@ def test_deg_wrappers_are_one_line_delegates():
         fn = getattr(kin, name)
         source = inspect.getsource(fn)
         return_lines = [
-            line.strip() for line in source.splitlines() if line.strip().startswith("return ")
+            line.strip()
+            for line in source.splitlines()
+            if line.strip().startswith("return ")
         ]
-        assert len(return_lines) == 1, f"{name} should delegate in one return, got: {return_lines}"
+        assert (
+            len(return_lines) == 1
+        ), f"{name} should delegate in one return, got: {return_lines}"
 
 
 def test_get_hand_position_xyz_deg_matches_rad_path():
@@ -194,13 +200,15 @@ def test_camera_on_negative_y_front_is_negative_y():
     assert camera_pose().translation[1] < 0.0
 
 
-def test_camera_optical_axis_known_defect_pr_2045():
-    # PR-2045: the model maps the camera +Z (optical) axis to +Y in the base
-    # frame; it should point toward -Y (outward from the body). Document the
-    # current wrong value so the fix is obvious.
-    rotation = camera_pose().rotation
-    optical_in_base = rotation @ np.array([0.0, 0.0, 1.0])
-    np.testing.assert_allclose(optical_in_base, np.array([0.0, 1.0, 0.0]), atol=1e-2)
+def test_camera_optical_axis_points_away_from_the_body():
+    # The Onshape export has the camera frame rotated by 180 degrees; the correction
+    # in robot_model (CAMERA_FRAME_CORRECTION) fixes it until PR-2045 repairs the
+    # export itself. Optical +Z must point away from the body on the -Y front.
+    pose = camera_pose()
+    optical_in_base = pose.rotation @ np.array([0.0, 0.0, 1.0])
+    axis_xy = optical_in_base[:2] / np.linalg.norm(optical_in_base[:2])
+    toward_body_xy = -pose.translation[:2] / np.linalg.norm(pose.translation[:2])
+    assert np.dot(axis_xy, toward_body_xy) < 0.0
 
 
 def test_mirrored_joints_mirror_palm_x():

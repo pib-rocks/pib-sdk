@@ -13,6 +13,7 @@ from pib_sdk.robot_model import (
     RIGHT_ARM,
     ArmSide,
     ChainDefinition,
+    _apply_camera_frame_correction,
 )
 
 CHAIN_CASES = [
@@ -45,6 +46,7 @@ def _plain_pinocchio_tip_pose(
     identically by hand.
     """
     full_model = pin.buildModelFromUrdf(str(DEFAULT_URDF_PATH))
+    _apply_camera_frame_correction(full_model)
     chain_joint_ids = {
         full_model.getJointId(name) for name in definition.urdf_joint_names
     }

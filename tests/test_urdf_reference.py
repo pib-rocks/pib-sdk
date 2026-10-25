@@ -13,6 +13,7 @@ import pytest
 
 from pib_sdk.kinematics import ChainKinematics
 from pib_sdk.robot_model import (
+    CAMERA_FRAME_CORRECTION,
     DEFAULT_URDF_PATH,
     HEAD,
     LEFT_ARM,
@@ -118,7 +119,9 @@ def test_forward_kinematics_matches_independent_reference(definition, reference)
     random_generator = np.random.default_rng(seed=7)
 
     for _ in range(RANDOM_CONFIGURATIONS_PER_CHAIN):
-        q_rad = lower + (upper - lower) * random_generator.random(chain.degrees_of_freedom)
+        q_rad = lower + (upper - lower) * random_generator.random(
+            chain.degrees_of_freedom
+        )
         pose = kinematics.forward(q_rad)
 
         expected = reference.tip_pose(
@@ -127,4 +130,7 @@ def test_forward_kinematics_matches_independent_reference(definition, reference)
         expected_translation_mm = expected[:3, 3] * MILLIMETRES_PER_METRE
 
         np.testing.assert_allclose(pose.translation, expected_translation_mm, atol=1e-9)
-        np.testing.assert_allclose(pose.rotation, expected[:3, :3], atol=1e-12)
+        expected_rotation = expected[:3, :3]
+        if definition.name == HEAD.name:
+            expected_rotation = expected_rotation @ CAMERA_FRAME_CORRECTION.rotation
+        np.testing.assert_allclose(pose.rotation, expected_rotation, atol=1e-12)
