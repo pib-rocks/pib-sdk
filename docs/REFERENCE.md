@@ -69,8 +69,9 @@ They expand locally; no connection or backend lookup is involved.
 
 `DEFAULT_SETTINGS` enables and exposes a motor and supplies the current
 velocity, acceleration, deceleration, pulse-width, period, and ±9000 internal
-rotation-range defaults. Those setting values are passed through unchanged;
-only `move` converts public degrees to hundredths of a degree.
+rotation-range defaults. Those setting values are passed through unchanged.
+`move` accepts degrees and converts them to radians on rosbridge;
+`send_timed_trajectory` accepts centidegrees and converts them to radians.
 
 #### `Write.set`
 
@@ -121,8 +122,9 @@ which is non-fatal if no echo arrives.
 waypoints: list[tuple[list[float], float]]) -> bool`
 
 This is the low-level smooth-motion API. Each waypoint is
-`(positions_internal_per_joint, time_from_start_seconds)`. Unlike `move`,
-positions are already in pib's internal **hundredths of a degree**. Every
+`(positions_centideg_per_joint, time_from_start_seconds)`. Unlike `move`,
+positions are in pib's **centidegrees** (hundredths of a degree, matching
+pib-backend pose storage) and are converted to radians before rosbridge. Every
 positions list must match `joint_names`; times are absolute from trajectory
 start, not per-leg durations. Supply non-negative, increasing times. Each is
 converted to ROS `Duration {sec, nanosec}`.

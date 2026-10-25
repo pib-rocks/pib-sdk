@@ -80,13 +80,14 @@ angle. See [Joint ↔ motor names](#joint--motor-names).
 
 ### Units and conventions
 
-Public movement and kinematics APIs use radians and millimetres, with `*_deg`
-wrappers for callers that think in degrees. The SDK converts motor commands to
-pib-backend's internal hundredths-of-a-degree representation at the service
-boundary. The exception is the low-level
-`Write.send_timed_trajectory`, whose positions are deliberately already in
-those internal units. Depth pixels are unsigned 16-bit millimetres, where
-zero means invalid.
+Kinematics APIs use radians and millimetres, with `*_deg` wrappers for callers
+that think in degrees. `Write.move` takes degrees at the public boundary (same
+as before). Joint positions on rosbridge (`/apply_joint_trajectory`,
+`/joint_trajectory`) are sent in **radians**; pib-backend HTTP and pose storage
+still use integer centidegrees. The low-level `Write.send_timed_trajectory`
+accepts waypoint positions in centidegrees (matching pib-backend) and converts
+them to radians before the rosbridge call. Depth pixels are unsigned 16-bit
+millimetres, where zero means invalid.
 
 ### Errors and command results
 
