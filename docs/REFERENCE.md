@@ -179,6 +179,44 @@ degrees with `Rz(yaw) @ Ry(pitch) @ Rx(roll)`.
 | `pose_to_xyz_rpy` | `(pose: pin.SE3) -> tuple[np.ndarray, np.ndarray]`; returns copied XYZ millimetres and RPY radians. Attribute/type errors from an invalid pose propagate. |
 | `pose_to_xyz_rpy_deg` | Same, returning RPY degrees. |
 
+### REP-103 frame conversion
+
+pib's model base frame uses ``+Z`` up, ``-Y`` forward (out of the chest), and
+``+X`` as the robot's own left. REP-103 is that frame rotated by ``-90`` degrees
+about ``Z``; converting **model → REP-103** applies ``+90`` degrees about ``Z``:
+
+``X_rep = -Y_model``, ``Y_rep = +X_model``, ``Z_rep = Z_model``.
+
+| API | Signature and behavior |
+|---|---|
+| `to_rep103` | `(value: pin.SE3 \| Sequence[float]) -> pin.SE3 \| np.ndarray`; maps a millimetre position or full pose (translation and rotation) from the model frame to REP-103. A 3-vector must have length three (`ValueError` otherwise). Returns the same kind (`SE3` in, `SE3` out; array in, array out). |
+| `from_rep103` | Inverse map (``-90`` degrees about ``Z``): ``X_model = +Y_rep``, ``Y_model = -X_rep``, ``Z_model = Z_rep``. Same typing and errors as `to_rep103`. |
+
+### Effective joint rotation axes (zero configuration)
+
+Each URDF revolute joint declares ``<axis xyz="0 0 1"/>`` together with an
+``origin`` rpy pre-rotation. The **effective** rotation axis in the model base
+frame is the angular part of that joint's column in
+``pin.computeJointJacobians`` / ``pin.getJointJacobian(..., LOCAL_WORLD_ALIGNED)``
+at the neutral configuration (not the raw ``axis`` element).
+
+| Chain | Joint | Effective axis in base (unit vector) |
+|---|---|---|
+| left arm | `shoulder_vertical_left` | ``[+1, 0, 0]`` |
+| left arm | `shoulder_horizontal_left` | ``[0, 0, +1]`` |
+| left arm | `upper_arm_left` | ``[-1, 0, 0]`` |
+| left arm | `elbow_left` | ``[0, -1, 0]`` |
+| left arm | `forearm_left` | ``[-√2/2, 0, -√2/2]`` |
+| left arm | `wrist_left` | ``[+√2/2, 0, -√2/2]`` |
+| right arm | `shoulder_vertical_right` | ``[-1, 0, 0]`` |
+| right arm | `shoulder_horizontal_right` | ``[0, 0, +1]`` |
+| right arm | `upper_arm_right` | ``[+1, 0, 0]`` |
+| right arm | `elbow_right` | ``[0, +1, 0]`` |
+| right arm | `forearm_right` | ``[+√2/2, 0, -√2/2]`` |
+| right arm | `wrist_right` | ``[+√2/2, 0, +√2/2]`` |
+| head | `head_horizontal` | ``[0, 0, -1]`` |
+| head | `head_vertical` | ``[-1, +0.0029, 0]`` (tilt link rpy) |
+
 ### `ChainKinematics`
 
 `ChainKinematics(chain: ChainModel)` reuses one mutable Pinocchio data buffer
