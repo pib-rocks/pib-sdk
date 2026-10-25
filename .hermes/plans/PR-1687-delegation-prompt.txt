@@ -1,0 +1,96 @@
+Implement PR-1687: update and expand the pib-sdk documentation.
+
+Ticket: https://pib-rocks.atlassian.net/browse/PR-1687
+Repo: pib-sdk — /home/pib/opencode/pib-sdk, branch `PR-1687` (from main `92d49f2`). Trunk is `main`.
+
+## Goal
+KEEP the existing documentation hierarchy, but make it complete, current and considerably more detailed:
+README = entry point (architecture, concepts, requirements, installation, quick start, conventions) and it links
+to an API reference plus tutorials and examples that live in docs/.
+
+Target structure:
+```
+README.md                      -> entry point: architecture, concepts, requirements, installation,
+                                  quick start, conventions; links to reference + tutorials + examples
+docs/REFERENCE.md              -> complete API reference for every module (existing file, complete it)
+docs/ARCHITECTURE.md           -> call-flow diagrams (keep; update only if it is now wrong)
+docs/TUTORIALS.md              -> step-by-step guides (NEW)
+docs/EXAMPLES.md               -> index of runnable examples (NEW)
+examples/                      -> runnable example scripts (NEW)
+```
+
+## Measured starting point (do not re-derive, verify against the code)
+- README.md is 307 lines and already has: Architecture at a glance, Requirements, Installation, Quick start
+  (Kinematics, IK, Motor control, Speech, Head camera pose, "Everything else"), Joint <-> motor names,
+  Conventions, Inverse kinematics options, Using a different or updated URDF, Development, License.
+- docs/REFERENCE.md is 368 lines and documents 11 modules: telemetry, backend, robot, features.drawing,
+  features.poses, features.programs, features.buttons, features.camera, features.assistant, features.display,
+  features.relay.
+- ENTIRELY MISSING from the reference: `pib_sdk.control` (the Write motion API), `pib_sdk.kinematics`,
+  `pib_sdk.robot_model`. `pib_sdk.speech` is only in the README quick start, not in the reference.
+- Of 155 public API elements, 38 are mentioned nowhere. Undocumented items include:
+  `ChainKinematics` (+ `joint_names`, `joint_limits_deg`, `named_configuration`, `degrees_of_freedom`),
+  `ArmKinematics`, `HeadKinematics`, `ArmSide`, `ChainDefinition`, `ChainModel` (+ its members),
+  `build_chain_model`, `get_chain_model`, `Personality`, `Chat`, `ChatMessage`, `AssistantState`,
+  `ButtonBinding`, `ProgramSummary`, `ProgramResult`, `PoseSummary`, `apply_pose`,
+  `Drawingsurface`-members (`Stroke.resampled`, `Sketch.point_count`, `DrawingSurface.point_mm`),
+  `Camera.get_depth_frame`, `Camera.get_distance_at_px`, `Camera.save_depth`, `Write.send_timed_trajectory`.
+- NOT documented anywhere: camera depth (get_depth_frame / get_distance_at_px / save_depth) and timed
+  trajectory playback (Write.send_timed_trajectory, poses.play_pose_sequence_timed).
+- One statement is FACTUALLY OUTDATED: docs/REFERENCE.md's poses section claims "there's no native
+  \"pose sequence\" concept in pib-backend ... this just fetches and applies each pose in order".
+  That is wrong now: pib-backend has a software trajectory controller (PR-1660, monotone cubic Hermite
+  interpolation, blends through via-points) and the SDK exposes timed sequences (PR-1685 / pib-sdk 0.5.1).
+- There are NO tutorials and NO examples anywhere in the repo.
+
+## Work items
+1. README.md — keep it the entry point, expand it:
+   - keep/expand the existing sections; make the concepts section explicit (the two-client model, one
+     connection, units and conventions, the Write motor-token/name model, error handling).
+   - add a curated documentation index linking to REFERENCE.md, TUTORIALS.md, EXAMPLES.md and ARCHITECTURE.md.
+   - every claim must match the current code.
+2. docs/REFERENCE.md — complete API reference:
+   - add the missing module sections: `pib_sdk.control` (Write incl. `send_timed_trajectory`, motor tokens and
+     name expansion, the CLI entry point), `pib_sdk.kinematics` (FK/IK, ChainKinematics, ArmKinematics,
+     HeadKinematics, get_hand_position_xyz, camera_pose, FK), `pib_sdk.robot_model` (ArmSide, ChainDefinition,
+     ChainModel, build_chain_model, get_chain_model, get_arm_model, get_head_model, set_urdf_path).
+   - add `pib_sdk.speech`, and close the remaining per-module gaps listed above.
+   - for every public element: purpose, signature, parameters (type + unit + meaning), return value, raised
+     exceptions, and a short usage snippet where helpful.
+   - document camera depth (values in millimetres, 0 = invalid, numpy requirement) and timed / smooth
+     trajectory playback (waypoint timing semantics, cumulative `time_from_start`, the backend's blending).
+   - fix the outdated pose-sequence statement and re-check every other caveat against the code.
+   - update the Contents list + anchors.
+3. docs/TUTORIALS.md (NEW) — step-by-step English guides:
+   first steps (install/connect/telemetry/move one motor); kinematics reach with IK; poses incl. saving a named
+   pose and replaying a smooth timed sequence; vision incl. depth and distance at a pixel; drawing an image;
+   voice assistant (personalities, chat, message); running a Blockly program and binding it to an RGB button;
+   display image and solid-state relay.
+4. docs/EXAMPLES.md + examples/ (NEW) — self-contained, copy-paste-runnable scripts referenced from the
+   tutorials, each marked as "needs a live robot" or "works offline" (e.g. kinematics, drawing).
+5. Anti-drift checks (add to the repo, keep them small and dependency-light):
+   - a documentation-coverage check that enumerates the public API (AST over `src/pib_sdk`) and fails when a
+     public module/class/function is not mentioned in the docs.
+   - a link/anchor check for the internal README/docs links.
+   - a syntax check that compiles every script under `examples/`.
+   Wire them so they can run in CI (there is a `.github/` directory; look for an existing workflows/tests setup
+   and follow it — do NOT invent a new CI system if one exists).
+
+## Constraints
+- Stay on branch `PR-1687`. Do NOT push or merge (the orchestrator opens the PR). You MAY commit.
+- pib-sdk only. Do NOT touch pib-backend, cerebra, or any robot deployment.
+- Do NOT change SDK code to make the docs match; the docs must describe what the code actually does. If you find
+  a real code/doc conflict, document the code as-is and list the conflict in your final report.
+- After this ticket the coverage check must be green (0 undocumented public API elements). You may baseline the
+  check to "no regressions" ONLY if you cannot reach 0; say so explicitly in the report if you do.
+- Do NOT commit `.hermes/plans/**`.
+
+## Verify
+- Run your coverage check, the link/anchor check, and the example syntax check; report the real output.
+- `python3 -m py_compile` (or equivalent) every example script.
+- Confirm the README still renders as a coherent entry point and that no outdated statement remains
+  (search the docs for the old pose-sequence claim).
+
+FINAL REPORT: files added/changed with line counts, the coverage number before/after (was 38 of 155
+undocumented), the list of module sections now present, how the checks are run, real command output, any
+code/doc conflicts found, and confirmation you did not push/merge and did not touch other repos.

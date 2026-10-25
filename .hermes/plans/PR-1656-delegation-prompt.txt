@@ -1,0 +1,38 @@
+Implement PR-1656 (Weg 2: release-drafter release notes + release-tag-as-version via CI publish) per the plan at `/home/pib/opencode/pib-sdk/.hermes/plans/PR-1656-plan.md`. READ THE PLAN FIRST — it has verified facts, the exact requirements, and hard constraints. Follow it exactly.
+
+SCOPE — ONLY these two coherent additions on branch `PR-1656`:
+
+A. Release-drafter (release notes automation) adapted to `main`:
+- Create `.github/workflows/release-drafter.yml`:
+  `on: push: branches: [main]` and `pull_request_target: types: [opened, reopened, labeled, unlabeled]`; `permissions: contents: read, pull-requests: write`; one job `update_release_draft` with `permissions: contents: write, pull-requests: write`, `runs-on: ubuntu-latest`; step `- uses: release-drafter/release-drafter@v6` with `config-name: release-drafter.yml`, `commitish: refs/heads/main` (IMPORTANT: pib-sdk trunk is main, NOT develop), and `env: GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}`.
+- Create `.github/release-drafter.yml` matching the cerebra/pib-backend config structure:
+  `name-template: 'v$RESOLVED_VERSION'`, `tag-template: 'v$RESOLVED_VERSION'`, categories: Features (feature/enhancement), Testing (testing), Bug Fixes (bug/fix), Documentation (documentation), Refactoring (refactor), Maintenance (maintenance/dependencies); `exclude-labels: [duplicate, wontfix, question]`; `version-resolver`: major->major, minor->feature/enhancement, patch->bug/fix/testing/documentation/refactor/maintenance/dependencies, default: patch; `template: |\n  ## What's Changed\n\n  $CHANGES`.
+
+B. Version single-source + PyPI publish workflow (Weg 2) — create `.github/workflows/publish.yml`:
+- Trigger: `on: release: types: [published]` (primary). You MAY also add `push: tags: ['v*']` as an alternative.
+- Jobs:
+  1. build-and-publish (or dry-run to TestPyPI then publish):
+     - `actions/checkout@v4` (check out the tagged commit; no submodules needed).
+     - Resolve version from the tag: for release event use `${{ github.event.release.tag_name }}`, else `GITHUB_REF_NAME`; strip a leading `v` (e.g. `v0.5.0` -> `0.5.0`).
+     - Inject into `pyproject.toml` line 7 `version = "..."` AND into `src/pib_sdk/__init__.py` line 57 `__version__ = "..."` BEFORE building (sed is fine). Do NOT commit this change; publish builds from the working tree.
+     - Build: `python -m build` (produces sdist + wheel).
+     - Publish: `pypa/gh-action-pypi-publish@release/v1` with `password: ${{ secrets.PYPI_TOKEN }}`.
+     - OPTIONAL dry-run stage (recommended, put it BEFORE the real publish so you can catch build errors): a job that builds and publishes to TestPyPI (`repository-url: https://test.pypi.org/legacy/`, `password: ${{ secrets.TEST_PYPI_TOKEN }}`), then the real publish job depends on it. If you add TWO jobs, wire a dependency (`needs:`).
+     - Note the publish step needs Python + build tooling; ensure setup-python and `pip install build` are present in the job before `python -m build`.
+- Without a real PyPI token in this repo's secrets, the workflow is the definition of record; it does not run in this PR.
+
+Do NOT modify: `src/pib_sdk/**` logic, `tests/**`, README, or existing API. The only code-area change this branch makes to version is NONE (the workflow injects version at publish time, not now).
+
+HARD CONSTRAINTS:
+- Stay on branch `PR-1656`. Do NOT merge to develop (pib-sdk has no develop — trunk is main). Do NOT push.
+- Do NOT use setuptools-scm / dynamic version in pyproject.toml. Keep version static.
+- Do NOT commit `.hermes/plans/**`. You MAY commit on PR-1656 (`ci: PR-1656 ...`). Do NOT commit if YAML is broken.
+- Report REAL results; do not fabricate.
+
+SELF-CHECK (run and observe REAL output):
+- `ls -la .github/workflows/` shows release-drafter.yml and publish.yml; `.github/release-drafter.yml` exists.
+- YAML validity: `python3 -c "import yaml,sys; [print('OK',f) for f in ['.github/workflows/release-drafter.yml','.github/workflows/publish.yml','.github/release-drafter.yml'] for _ in [yaml.safe_load(open(f))]]"` — if pyyaml is installed; if not, report that you could not parse and visually confirm the structure is well-formed YAML (2-space indent, correct colons).
+- `grep -n "commitish" .github/workflows/release-drafter.yml` → must be `refs/heads/main`.
+- `PYTHONPATH=src python3 -m pytest tests/ -q` still green (no source changes).
+
+FINAL REPORT: list the files created, paste the full `.github/workflows/publish.yml` and `.github/release-drafter.yml`, the `commitish` value, the YAML-check result, the pytest result, and confirmation you did not merge/push or change src/**. If you commit, give the real commit hash.
