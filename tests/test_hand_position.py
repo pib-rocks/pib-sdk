@@ -2,7 +2,7 @@
 
 import pytest
 
-from pib_sdk.kinematics import ArmKinematics, fk, get_hand_position_xyz
+from pib_sdk.kinematics import ArmKinematics, fk_deg, get_hand_position_xyz
 
 KNOWN_Q_DEG = {
     "right": [10.0, 20.0, -5.0, 15.0, 30.0, 0.0],
@@ -32,7 +32,7 @@ def test_returned_xyz_matches_fk():
     q = KNOWN_Q_DEG[side]
     fake = FakeTelemetry(_positions_for(side, q))
     xyz = get_hand_position_xyz(side, telemetry=fake)
-    assert xyz == tuple(fk(side, q).translation)
+    assert xyz == tuple(fk_deg(side, q).translation)
 
 
 def test_uses_motor_names_in_correct_order():
@@ -60,7 +60,7 @@ def test_left_and_right_both_work():
         q = KNOWN_Q_DEG[side]
         fake = FakeTelemetry(_positions_for(side, q))
         xyz = get_hand_position_xyz(side, telemetry=fake)
-        assert xyz == tuple(fk(side, q).translation)
+        assert xyz == tuple(fk_deg(side, q).translation)
         results[side] = xyz
 
     zero_right = get_hand_position_xyz(

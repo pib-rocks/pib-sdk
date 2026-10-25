@@ -119,7 +119,7 @@ def test_forward_kinematics_matches_independent_reference(definition, reference)
 
     for _ in range(RANDOM_CONFIGURATIONS_PER_CHAIN):
         q_rad = lower + (upper - lower) * random_generator.random(chain.degrees_of_freedom)
-        pose = kinematics.forward(np.rad2deg(q_rad))
+        pose = kinematics.forward(q_rad)
 
         expected = reference.tip_pose(
             definition.tip_frame, dict(zip(definition.urdf_joint_names, q_rad))
