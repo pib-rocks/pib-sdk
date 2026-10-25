@@ -8,6 +8,7 @@ from pib_sdk.kinematics import (
     IK,
     ArmKinematics,
     HeadKinematics,
+    InverseKinematicsWorkspaceError,
     camera_pose,
     fk_deg,
     ik_deg,
@@ -98,7 +99,7 @@ def test_ik_solutions_respect_joint_limits():
 
 def test_ik_unreachable_target_raises():
     arm = ArmKinematics(ArmSide.RIGHT)
-    with pytest.raises(ValueError, match="failed to converge"):
+    with pytest.raises(InverseKinematicsWorkspaceError, match="beyond sampled reach"):
         arm.inverse_deg(xyz=[5000.0, 0.0, 0.0], restarts=2, max_iterations=50)
 
 

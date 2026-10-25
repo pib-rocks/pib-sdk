@@ -47,6 +47,7 @@ Poses are :class:`pinocchio.SE3` values in pib's base frame; read
 
 from __future__ import annotations
 
+import time
 from collections.abc import Iterable, Sequence
 
 import numpy as np
@@ -71,6 +72,31 @@ _FULL_POSE_MASK: tuple[int, ...] = (1, 1, 1, 1, 1, 1)
 # orientation dominates the solve.
 _ORIENTATION_WEIGHT: float = 250.0
 
+# Model-frame ``+Y`` points behind the chest (``-Y`` is forward out of the body).
+_BEHIND_BODY_Y_THRESHOLD_MM: float = 600.0
+# Margin on the sampled maximum reach when classifying workspace failures.
+_REACH_MARGIN: float = 0.05
+
+
+class InverseKinematicsError(ValueError):
+    """IK could not produce a pose-accurate, limit-respecting joint vector."""
+
+
+class InverseKinematicsWorkspaceError(InverseKinematicsError):
+    """The target lies beyond the arm's reachable workspace (distance from base)."""
+
+
+class InverseKinematicsBehindBodyError(InverseKinematicsError):
+    """The target lies behind the torso (+Y in the model base frame)."""
+
+
+class InverseKinematicsJointLimitError(InverseKinematicsError):
+    """The pose is reachable only with joints outside mechanical limits."""
+
+
+class InverseKinematicsConvergenceError(InverseKinematicsError):
+    """The iterative solver did not drive the pose error below ``tolerance``."""
+
 
 def _degrees_to_radians(values: Sequence[float]) -> np.ndarray:
     return np.deg2rad(np.asarray(values, dtype=float))
@@ -80,9 +106,7 @@ def _radians_to_degrees(values: Sequence[float]) -> np.ndarray:
     return np.rad2deg(np.asarray(values, dtype=float))
 
 
-def pose_from_xyz_rpy(
-    xyz: Sequence[float], rpy_rad: Sequence[float] | None = None
-) -> pin.SE3:
+def pose_from_xyz_rpy(xyz: Sequence[float], rpy_rad: Sequence[float] | None = None) -> pin.SE3:
     """Build an :class:`pinocchio.SE3` from a position (mm) and optional RPY (rad)."""
     translation = np.asarray(xyz, dtype=float)
     if translation.shape != (3,):
@@ -91,20 +115,14 @@ def pose_from_xyz_rpy(
         return pin.SE3(np.eye(3), translation)
     roll, pitch, yaw = np.asarray(rpy_rad, dtype=float)
     rotation = (
-        pin.utils.rotate("z", yaw)
-        @ pin.utils.rotate("y", pitch)
-        @ pin.utils.rotate("x", roll)
+        pin.utils.rotate("z", yaw) @ pin.utils.rotate("y", pitch) @ pin.utils.rotate("x", roll)
     )
     return pin.SE3(rotation, translation)
 
 
-def pose_from_xyz_rpy_deg(
-    xyz: Sequence[float], rpy_deg: Sequence[float] | None = None
-) -> pin.SE3:
+def pose_from_xyz_rpy_deg(xyz: Sequence[float], rpy_deg: Sequence[float] | None = None) -> pin.SE3:
     """Build an SE3 from a position (mm) and optional RPY (deg)."""
-    return pose_from_xyz_rpy(
-        xyz, _degrees_to_radians(rpy_deg) if rpy_deg is not None else None
-    )
+    return pose_from_xyz_rpy(xyz, _degrees_to_radians(rpy_deg) if rpy_deg is not None else None)
 
 
 def pose_to_xyz_rpy(pose: pin.SE3) -> tuple[np.ndarray, np.ndarray]:
@@ -191,6 +209,11 @@ class ChainKinematics:
     """Forward and inverse kinematics for one kinematic chain.
 
     Reuse an instance to avoid rebuilding the model and its solver buffer.
+    Each instance owns one mutable Pinocchio ``data`` object; do not call
+    :meth:`inverse` or :meth:`forward` on the same instance from multiple
+    threads concurrently. Sequential solves on one instance are independent
+    (each call finishes before the next mutates ``data``).
+
     See :class:`ArmKinematics` and :class:`HeadKinematics` for ready-made
     chains, or construct directly from any :class:`ChainModel`.
     """
@@ -200,6 +223,8 @@ class ChainKinematics:
         self._data: pin.Data = chain.create_data()
         self._joint_lower_limits: np.ndarray = chain.joint_lower_limits
         self._joint_upper_limits: np.ndarray = chain.joint_upper_limits
+        self._max_reach_mm: float | None = None
+        self.last_inverse_stats: dict[str, float | int | bool] | None = None
 
     @property
     def degrees_of_freedom(self) -> int:
@@ -301,13 +326,23 @@ class ChainKinematics:
         Raises
         ------
         ValueError
-            If ``mask`` is malformed or the solver fails to converge.
+            If ``mask`` is malformed or radian/degree arguments are mixed.
+        InverseKinematicsWorkspaceError
+            Target farther from the base than the sampled maximum reach.
+        InverseKinematicsBehindBodyError
+            Target with model-frame ``+Y`` behind the torso (see module constants).
+        InverseKinematicsJointLimitError
+            With ``respect_limits=True``, only out-of-limit solutions converged.
+        InverseKinematicsConvergenceError
+            No attempt met ``tolerance`` within ``max_iterations`` (and restarts).
+
+        After each call, :attr:`last_inverse_stats` holds ``iterations``,
+        ``restarts_used``, ``pose_error_norm`` (mm-scale position part when
+        position-only), and ``elapsed_ms`` for the winning attempt.
         """
         if rpy_deg is not None or initial_guess_deg is not None:
             if rpy_rad is not None or initial_guess_rad is not None:
-                raise ValueError(
-                    "pass either radian or degree angle arguments, not both"
-                )
+                raise ValueError("pass either radian or degree angle arguments, not both")
             return self.inverse_deg(
                 xyz=xyz,
                 rpy_deg=rpy_deg,
@@ -325,7 +360,8 @@ class ChainKinematics:
         else:
             initial_guess_rad = np.asarray(list(initial_guess_rad), dtype=float)
 
-        solution_rad, converged = self._solve_with_restarts(
+        solve_started = time.perf_counter()
+        solution_rad, converged, diagnostics = self._solve_with_restarts(
             target_pose,
             error_mask,
             initial_guess_rad,
@@ -334,15 +370,22 @@ class ChainKinematics:
             restarts,
             respect_limits,
         )
+        elapsed_ms = (time.perf_counter() - solve_started) * 1000.0
+        self.last_inverse_stats = {
+            "iterations": diagnostics["iterations"],
+            "restarts_used": diagnostics["restarts_used"],
+            "pose_error_norm": diagnostics["pose_error_norm"],
+            "elapsed_ms": elapsed_ms,
+            "converged": converged,
+        }
         if not converged:
-            within = " within joint limits" if respect_limits else ""
-            raise ValueError(
-                f"Inverse kinematics failed to converge for the requested pose{within}"
+            self._raise_inverse_failure(
+                target_pose.translation,
+                respect_limits=respect_limits,
+                diagnostics=diagnostics,
             )
         if respect_limits:
-            solution_rad = np.clip(
-                solution_rad, self._joint_lower_limits, self._joint_upper_limits
-            )
+            solution_rad = np.clip(solution_rad, self._joint_lower_limits, self._joint_upper_limits)
         return solution_rad.copy()
 
     def inverse_deg(
@@ -359,9 +402,7 @@ class ChainKinematics:
         """Return joint angles (degrees) that reach the requested pose."""
         rpy_rad = _degrees_to_radians(rpy_deg) if rpy_deg is not None else None
         guess_rad = (
-            _degrees_to_radians(list(initial_guess_deg))
-            if initial_guess_deg is not None
-            else None
+            _degrees_to_radians(list(initial_guess_deg)) if initial_guess_deg is not None else None
         )
         return _radians_to_degrees(
             self.inverse(
@@ -415,7 +456,7 @@ class ChainKinematics:
         seed_rad: np.ndarray,
         tolerance: float,
         max_iterations: int,
-    ) -> tuple[np.ndarray, bool, float]:
+    ) -> tuple[np.ndarray, bool, float, int]:
         """Levenberg-Marquardt closed-loop IK from a single seed.
 
         Each step solves ``(J'WJ + lambda*I) dq = J'W e``, where ``W`` scales
@@ -441,12 +482,14 @@ class ChainKinematics:
         )[mask]
         joint_angles_rad = np.array(seed_rad, dtype=float)
         damping = 1e-2
+        iterations = 0
 
         for _ in range(max_iterations):
+            iterations += 1
             error = self._pose_error(joint_angles_rad, target, mask)
             error_norm = float(np.linalg.norm(error))
             if error_norm < tolerance:
-                return joint_angles_rad, True, error_norm
+                return joint_angles_rad, True, error_norm, iterations
 
             jacobian = pin.computeFrameJacobian(
                 model, self._data, joint_angles_rad, frame_id, pin.LOCAL_WORLD_ALIGNED
@@ -466,10 +509,8 @@ class ChainKinematics:
             else:
                 damping = min(damping * 4.0, 1e6)
 
-        final_error = float(
-            np.linalg.norm(self._pose_error(joint_angles_rad, target, mask))
-        )
-        return joint_angles_rad, final_error < tolerance, final_error
+        final_error = float(np.linalg.norm(self._pose_error(joint_angles_rad, target, mask)))
+        return joint_angles_rad, final_error < tolerance, final_error, iterations
 
     def _solve_with_restarts(
         self,
@@ -480,37 +521,111 @@ class ChainKinematics:
         max_iterations: int,
         restarts: int,
         respect_limits: bool,
-    ) -> tuple[np.ndarray, bool]:
+    ) -> tuple[np.ndarray, bool, dict[str, float | int | bool]]:
         def is_acceptable(joint_angles_rad: np.ndarray, converged: bool) -> bool:
             if not converged:
                 return False
             return (not respect_limits) or self._within_limits(joint_angles_rad)
 
-        solution, converged, best_error = self._solve_once(
+        out_of_limit_converged = False
+        restarts_used = 0
+
+        solution, converged, best_error, iterations = self._solve_once(
             target, mask, initial_guess_rad, tolerance, max_iterations
         )
+        if converged and respect_limits and not self._within_limits(solution):
+            out_of_limit_converged = True
         if is_acceptable(solution, converged):
-            return solution, True
+            return (
+                solution,
+                True,
+                {
+                    "iterations": iterations,
+                    "restarts_used": 0,
+                    "pose_error_norm": best_error,
+                    "out_of_limit_converged": out_of_limit_converged,
+                },
+            )
         best_solution = solution
+        best_iterations = iterations
 
         random_generator = np.random.default_rng(seed=0)
         lower, upper = self._joint_lower_limits, self._joint_upper_limits
-        for _ in range(restarts):
-            random_seed = lower + (upper - lower) * random_generator.random(
-                self.degrees_of_freedom
-            )
-            solution, converged, error = self._solve_once(
+        for attempt in range(restarts):
+            restarts_used = attempt + 1
+            random_seed = lower + (upper - lower) * random_generator.random(self.degrees_of_freedom)
+            solution, converged, error, iterations = self._solve_once(
                 target, mask, random_seed, tolerance, max_iterations
             )
+            if converged and respect_limits and not self._within_limits(solution):
+                out_of_limit_converged = True
             if is_acceptable(solution, converged):
-                return solution, True
+                return (
+                    solution,
+                    True,
+                    {
+                        "iterations": iterations,
+                        "restarts_used": restarts_used,
+                        "pose_error_norm": error,
+                        "out_of_limit_converged": out_of_limit_converged,
+                    },
+                )
             if error < best_error:
-                best_solution, best_error = solution, error
-        return best_solution, False
+                best_solution, best_error, best_iterations = solution, error, iterations
+        return (
+            best_solution,
+            False,
+            {
+                "iterations": best_iterations,
+                "restarts_used": restarts_used,
+                "pose_error_norm": best_error,
+                "out_of_limit_converged": out_of_limit_converged,
+            },
+        )
 
-    def _within_limits(
-        self, joint_angles_rad: np.ndarray, tolerance: float = 1e-6
-    ) -> bool:
+    def _max_reach_from_base_mm(self) -> float:
+        if self._max_reach_mm is not None:
+            return self._max_reach_mm
+        lower, upper = self._joint_lower_limits, self._joint_upper_limits
+        rng = np.random.default_rng(seed=17)
+        max_distance = 0.0
+        for _ in range(2000):
+            joint_angles_rad = lower + (upper - lower) * rng.random(self.degrees_of_freedom)
+            distance = float(np.linalg.norm(self._tip_pose(joint_angles_rad).translation))
+            max_distance = max(max_distance, distance)
+        self._max_reach_mm = max_distance
+        return max_distance
+
+    def _raise_inverse_failure(
+        self,
+        target_xyz: np.ndarray,
+        *,
+        respect_limits: bool,
+        diagnostics: dict[str, float | int | bool],
+    ) -> None:
+        y_mm = float(target_xyz[1])
+        if y_mm > _BEHIND_BODY_Y_THRESHOLD_MM:
+            raise InverseKinematicsBehindBodyError(
+                f"Target Y={y_mm:.1f} mm is behind the body "
+                f"(model +Y; threshold {_BEHIND_BODY_Y_THRESHOLD_MM:.0f} mm)"
+            )
+        reach = self._max_reach_from_base_mm()
+        distance = float(np.linalg.norm(target_xyz))
+        if distance > reach * (1.0 + _REACH_MARGIN):
+            raise InverseKinematicsWorkspaceError(
+                f"Target is {distance:.1f} mm from the base, beyond sampled reach "
+                f"{reach:.1f} mm (+{_REACH_MARGIN * 100:.0f}% margin)"
+            )
+        if respect_limits and diagnostics.get("out_of_limit_converged"):
+            raise InverseKinematicsJointLimitError(
+                "Target pose converged only outside mechanical joint limits"
+            )
+        within = " within joint limits" if respect_limits else ""
+        raise InverseKinematicsConvergenceError(
+            f"Inverse kinematics failed to converge for the requested pose{within}"
+        )
+
+    def _within_limits(self, joint_angles_rad: np.ndarray, tolerance: float = 1e-6) -> bool:
         return bool(
             np.all(joint_angles_rad >= self._joint_lower_limits - tolerance)
             and np.all(joint_angles_rad <= self._joint_upper_limits + tolerance)
@@ -608,8 +723,7 @@ def get_hand_position_xyz(
         missing = [name for name in arm.motor_names if name not in positions]
         if missing:
             raise KeyError(
-                f"Missing motor position for {missing[0]!r}; "
-                f"needed motors {list(arm.motor_names)}"
+                f"Missing motor position for {missing[0]!r}; needed motors {list(arm.motor_names)}"
             )
         q_deg = [positions[m] for m in arm.motor_names]
         pose = arm.forward_deg(q_deg)
