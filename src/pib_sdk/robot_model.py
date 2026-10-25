@@ -29,6 +29,7 @@ Point the loader at another file with :func:`set_urdf_path` or the
 from __future__ import annotations
 
 import os
+import xml.etree.ElementTree as ElementTree
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import Enum
@@ -235,6 +236,19 @@ _ARM_DEFINITIONS: dict[ArmSide, ChainDefinition] = {
 _CAMERA_LINK_FRAME = "urdf_camera_link"
 CAMERA_FRAME_CORRECTION = pin.SE3(pin.utils.rotate("y", np.pi), np.zeros(3))
 
+# Onshape export defect (PR-2055): the bundled URDF tilts each forearm roll axis
+# about 11° away from the forearm centreline (30 mm lateral offset at the wrist
+# on a 157 mm segment; +30° roll then moves the wrist ~15.5 mm). The robot
+# rolls about the forearm long axis with no lateral offset (measured +3000 cd
+# for +30° on lower_arm_left_rotation). Rewrite each roll joint's ``<axis>`` in
+# an in-memory URDF copy so it matches the segment to the wrist joint origin,
+# without moving joint placements (q = 0 stays calibrated). Remove when PR-2055
+# lands.
+FOREARM_ROLL_AXIS_CORRECTION: Mapping[str, str] = {
+    "forearm_left": "wrist_left",
+    "forearm_right": "wrist_right",
+}
+
 _FULL_MODEL_CACHE: dict[Path, pin.Model] = {}
 _CHAIN_MODEL_CACHE: dict[tuple[str, Path], ChainModel] = {}
 
@@ -255,6 +269,65 @@ def _resolve_urdf_path(urdf_path: str | Path | None) -> Path:
     return Path(
         os.environ.get(_URDF_PATH_ENVIRONMENT_VARIABLE, DEFAULT_URDF_PATH)
     ).resolve()
+
+
+def _parse_urdf_xyz(attribute: str | None) -> np.ndarray:
+    if not attribute:
+        return np.zeros(3)
+    return np.array([float(value) for value in attribute.split()], dtype=float)
+
+
+def _forearm_roll_axis_local(
+    forearm_joint: ElementTree.Element, wrist_joint: ElementTree.Element
+) -> np.ndarray:
+    """Unit roll axis in the forearm joint frame along the segment to the wrist."""
+    wrist_origin = wrist_joint.find("origin")
+    if wrist_origin is None:
+        raise ValueError(
+            f"URDF joint {wrist_joint.get('name')!r} has no <origin> for PR-2055 axis fix"
+        )
+    wrist_xyz = _parse_urdf_xyz(wrist_origin.get("xyz"))
+    forearm_origin = forearm_joint.find("origin")
+    if forearm_origin is None:
+        raise ValueError(
+            f"URDF joint {forearm_joint.get('name')!r} has no <origin> for PR-2055 axis fix"
+        )
+    rpy = _parse_urdf_xyz(forearm_origin.get("rpy"))
+    rotation_joint = pin.rpy.rpyToMatrix(rpy[0], rpy[1], rpy[2])
+    axis_parent = rotation_joint @ wrist_xyz
+    axis_local = rotation_joint.T @ axis_parent
+    return axis_local / np.linalg.norm(axis_local)
+
+
+def _apply_forearm_roll_axis_correction(urdf_root: ElementTree.Element) -> None:
+    """Patch forearm roll ``<axis>`` elements in ``urdf_root`` (in-memory URDF only)."""
+    joints_by_name = {joint.get("name"): joint for joint in urdf_root.findall("joint")}
+    for forearm_name, wrist_name in FOREARM_ROLL_AXIS_CORRECTION.items():
+        forearm_joint = joints_by_name.get(forearm_name)
+        wrist_joint = joints_by_name.get(wrist_name)
+        if forearm_joint is None or wrist_joint is None:
+            continue
+        axis_element = forearm_joint.find("axis")
+        if axis_element is None:
+            raise ValueError(
+                f"URDF joint {forearm_name!r} has no <axis> for PR-2055 axis fix"
+            )
+        axis_local = _forearm_roll_axis_local(forearm_joint, wrist_joint)
+        axis_element.set(
+            "xyz",
+            f"{axis_local[0]:.17g} {axis_local[1]:.17g} {axis_local[2]:.17g}",
+        )
+
+
+def _urdf_xml_from_path(path: Path) -> str:
+    tree = ElementTree.parse(path)
+    _apply_forearm_roll_axis_correction(tree.getroot())
+    return ElementTree.tostring(tree.getroot(), encoding="unicode")
+
+
+def _build_model_from_urdf_path(path: Path) -> pin.Model:
+    """Load Pinocchio model from ``path`` with bundled URDF export fixes applied."""
+    return pin.buildModelFromXML(_urdf_xml_from_path(path))
 
 
 def _apply_camera_frame_correction(model: pin.Model) -> None:
@@ -282,7 +355,7 @@ def _load_full_model(path: Path) -> pin.Model:
                 f"{DEFAULT_URDF_PATH}; use set_urdf_path(...) or the "
                 f"{_URDF_PATH_ENVIRONMENT_VARIABLE} environment variable to point at another file."
             )
-        model = pin.buildModelFromUrdf(str(path))
+        model = _build_model_from_urdf_path(path)
         _apply_camera_frame_correction(model)
         _FULL_MODEL_CACHE[path] = model
     return _FULL_MODEL_CACHE[path]

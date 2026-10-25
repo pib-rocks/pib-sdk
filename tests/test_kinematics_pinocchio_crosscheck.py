@@ -6,7 +6,6 @@ import pytest
 
 from pib_sdk.kinematics import camera_pose, fk
 from pib_sdk.robot_model import (
-    DEFAULT_URDF_PATH,
     HEAD,
     LEFT_ARM,
     MILLIMETRES_PER_METRE,
@@ -14,6 +13,8 @@ from pib_sdk.robot_model import (
     ArmSide,
     ChainDefinition,
     _apply_camera_frame_correction,
+    _build_model_from_urdf_path,
+    _resolve_urdf_path,
 )
 
 CHAIN_CASES = [
@@ -45,7 +46,8 @@ def _plain_pinocchio_tip_pose(
     pose at ``definition.tip_frame`` matches when those extras are applied
     identically by hand.
     """
-    full_model = pin.buildModelFromUrdf(str(DEFAULT_URDF_PATH))
+    # Same in-memory URDF patches as robot_model._load_full_model (PR-2055 axis fix).
+    full_model = _build_model_from_urdf_path(_resolve_urdf_path(None))
     _apply_camera_frame_correction(full_model)
     chain_joint_ids = {
         full_model.getJointId(name) for name in definition.urdf_joint_names
