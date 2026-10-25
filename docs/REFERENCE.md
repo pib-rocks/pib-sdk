@@ -206,13 +206,13 @@ at the neutral configuration (not the raw ``axis`` element).
 | left arm | `shoulder_horizontal_left` | ``[0, 0, +1]`` |
 | left arm | `upper_arm_left` | ``[-1, 0, 0]`` |
 | left arm | `elbow_left` | ``[0, -1, 0]`` |
-| left arm | `forearm_left` | ``[-√2/2, 0, -√2/2]`` |
+| left arm | `forearm_left` | ``[+0.811, +0.095, +0.577]`` (corrected; see PR-2055) |
 | left arm | `wrist_left` | ``[+√2/2, 0, -√2/2]`` |
 | right arm | `shoulder_vertical_right` | ``[-1, 0, 0]`` |
 | right arm | `shoulder_horizontal_right` | ``[0, 0, +1]`` |
 | right arm | `upper_arm_right` | ``[+1, 0, 0]`` |
 | right arm | `elbow_right` | ``[0, +1, 0]`` |
-| right arm | `forearm_right` | ``[+√2/2, 0, -√2/2]`` |
+| right arm | `forearm_right` | ``[-0.582, +0.095, +0.807]`` (corrected; see PR-2055) |
 | right arm | `wrist_right` | ``[+√2/2, 0, +√2/2]`` |
 | head | `head_horizontal` | ``[0, 0, -1]`` |
 | head | `head_vertical` | ``[-1, +0.0029, 0]`` (tilt link rpy) |
@@ -223,26 +223,28 @@ a joint that mechanically rolls about the forearm's long axis still has diagonal
 components here. What each joint does relative to its own limb is measured as
 the angle between its axis and the next link's segment:
 
-| Joint | Angle axis/segment | Offset axis <-> segment | Mechanical role |
+| Joint | Angle axis/segment (raw URDF on disk) | Offset axis <-> segment | Mechanical role |
 |---|---|---|---|
 | `forearm_left` | 11.0° | 30.0 mm on a 157.3 mm segment | roll about the forearm's long axis |
 | `forearm_right` | 10.7° | 29.2 mm on a 157.1 mm segment | roll (mirrored) |
 | `wrist_left` | 80.5° | -- | bend, perpendicular to the forearm |
 
-The roll axis therefore follows the forearm as the elbow bends: it is 11.0° off
-the segment for elbow 0°, 30°, 60° and 90°, with the same 30.0 mm offset, i.e.
-the axis **rotates with the segment** and never stays diagonal in the base frame.
+On the bundled URDF file the roll axis is tilted ~11° from the forearm segment
+(the axis **rotates with the segment** as the elbow bends). That mismatch is
+wrong for the physical robot: commanding `lower_arm_left_rotation` +30° reached
+exactly +3000 cd with neighbouring joints at delta 0, and the hand turns about
+its own axis **without lateral offset**, while the raw URDF predicts ~15.5 mm
+wrist displacement for the same motion.
 
-**Known model defect (PR-2055).** That 11.0° / 30.0 mm residual is wrong, and it
-was measured against the robot rather than argued: commanding
-`lower_arm_left_rotation` +30° on pib5advanced reached exactly +3000 cd with no
-other joint moving, and the hand visibly turns about its own axis **without any
-lateral offset**. A pure roll about the forearm centreline is therefore what the
-hardware does, while this geometry predicts a 15.5 mm wrist displacement
-(chord `2 r sin(theta/2)` with `r = 30 mm`). So the exported joint placement is
-imprecise: forward kinematics of the wrist and hand carry up to ~15 mm of error
-after a 30° roll, vanishing at zero roll. PR-2055 fixes the placement in the
-Onshape export; this paragraph goes away with the corrected URDF.
+**Known model defect (PR-2055) — interim SDK fix.** At load time,
+``robot_model`` rewrites the ``<axis>`` of ``forearm_left`` and ``forearm_right``
+in an in-memory copy of the URDF (joint placements stay unchanged so ``q = 0``
+remains calibrated). Each corrected axis is the unit vector from the roll joint
+origin to the wrist joint origin, expressed in the roll joint frame via the
+joint ``origin`` rpy (``FOREARM_ROLL_AXIS_CORRECTION`` maps roll joint to wrist
+joint). Effective axes in the table above are after that patch; roll motion is a
+pure spin about the forearm centreline. Remove this layer when PR-2055 lands and
+the Onshape export writes the correct axis on disk.
 
 ### `ChainKinematics`
 

@@ -124,6 +124,18 @@ def test_missing_urdf_file_raises_file_not_found(tmp_path):
         build_chain_model(RIGHT_ARM, urdf_path=tmp_path / "nowhere.urdf")
 
 
+def test_forearm_roll_axis_correction_applied_once_per_cached_model():
+    """Building an arm chain twice must not double-apply FOREARM_ROLL_AXIS_CORRECTION."""
+    robot_model._FULL_MODEL_CACHE.clear()
+    robot_model._CHAIN_MODEL_CACHE.clear()
+    first = get_arm_model(ArmSide.LEFT)
+    second = get_arm_model(ArmSide.LEFT)
+    assert first is second
+    np.testing.assert_allclose(
+        first.joint_lower_limits, second.joint_lower_limits, atol=1e-15
+    )
+
+
 def test_camera_frame_correction_applied_once_per_cached_model():
     """Building the head chain twice must not double-apply CAMERA_FRAME_CORRECTION."""
     first = get_head_model()

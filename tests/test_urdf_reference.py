@@ -19,6 +19,7 @@ from pib_sdk.robot_model import (
     LEFT_ARM,
     MILLIMETRES_PER_METRE,
     RIGHT_ARM,
+    _apply_forearm_roll_axis_correction,
     get_chain_model,
 )
 
@@ -66,6 +67,7 @@ class UrdfReferenceKinematics:
 
     def __init__(self, urdf_path):
         root = ElementTree.parse(urdf_path).getroot()
+        _apply_forearm_roll_axis_correction(root)
         self._joint_by_child_link = {}
         for joint in root.findall("joint"):
             origin = joint.find("origin")
