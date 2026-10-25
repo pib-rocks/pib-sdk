@@ -229,22 +229,30 @@ the angle between its axis and the next link's segment:
 | `forearm_right` | 10.7° | 29.2 mm on a 157.1 mm segment | roll (mirrored) |
 | `wrist_left` | 80.5° | -- | bend, perpendicular to the forearm |
 
-On the bundled URDF file the roll axis is tilted ~11° from the forearm segment
-(the axis **rotates with the segment** as the elbow bends). That mismatch is
-wrong for the physical robot: commanding `lower_arm_left_rotation` +30° reached
-exactly +3000 cd with neighbouring joints at delta 0, and the hand turns about
-its own axis **without lateral offset**, while the raw URDF predicts ~15.5 mm
-wrist displacement for the same motion.
+**Withdrawn reading, and what the export actually contains.** An earlier version of
+this section claimed the roll axis was tilted ~11 deg from the forearm, because it
+compared the axis against the line between two joint **origins**. A revolute joint's
+origin may sit anywhere along its axis, so that line is gauge dependent and the claim did
+not hold. Measured gauge-free - angle and perpendicular distance between each pair of
+consecutive joint axes - the bundled URDF is clean and symmetric:
 
-**Known model defect (PR-2055) — interim SDK fix.** At load time,
-``robot_model`` rewrites the ``<axis>`` of ``forearm_left`` and ``forearm_right``
-in an in-memory copy of the URDF (joint placements stay unchanged so ``q = 0``
-remains calibrated). Each corrected axis is the unit vector from the roll joint
-origin to the wrist joint origin, expressed in the roll joint frame via the
-joint ``origin`` rpy (``FOREARM_ROLL_AXIS_CORRECTION`` maps roll joint to wrist
-joint). Effective axes in the table above are after that patch; roll motion is a
-pure spin about the forearm centreline. Remove this layer when PR-2055 lands and
-the Onshape export writes the correct axis on disk.
+| Axis pair | Angle | Distance (left / right) |
+|---|---|---|
+| `shoulder_vertical` -> `shoulder_horizontal` | 90.00 deg | 0.00 / 0.00 mm |
+| `shoulder_horizontal` -> `upper_arm` | 90.00 deg | 0.00 / 0.00 mm |
+| `upper_arm` -> `elbow` | 90.00 deg | 21.00 / 21.00 mm |
+| `elbow` -> `forearm` | 90.00 deg | 21.00 / 21.00 mm |
+| `forearm` -> `wrist` | 90.00 deg | 15.00 / 15.00 mm |
+
+Two consequences worth keeping in mind. First, the arms are **exactly** mirror symmetric -
+every difference between left and right is 0.00 deg and 0.00 mm - so no per-side
+correction belongs in the load path. A load-time "axis correction" was briefly shipped
+for PR-2055 and did break that symmetry (it left the elbow-to-forearm axis distance at
+6.24 mm on one side and 34.65 mm on the other); it has been reverted. Second, the roll
+axis and the wrist axis are 15 mm apart as lines, so a 30 deg roll still displaces the
+wrist by about 7.8 mm in the model. Whether that is a real eccentricity of the mechanism
+is not settled: the operator sees the hand turn in place, which argues against it, and
+PR-2057 defines a hand frame that can be measured against.
 
 ### IK failure types
 
