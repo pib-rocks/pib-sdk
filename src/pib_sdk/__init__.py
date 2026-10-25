@@ -4,11 +4,12 @@ Quick start
 -----------
     from pib_sdk import fk, ik, Write, right_arm
 
-    q_deg = ik("right", xyz=[-400, 100, 900])   # millimetres -> degrees
-    pose = fk("right", q_deg)                   # degrees -> pose (mm)
+    q_rad = ik("right", xyz=[-400, 100, 900])   # millimetres -> radians
+    pose = fk("right", q_rad)                   # radians -> pose (mm)
+    pose = fk_deg("right", [0, 45, 0, 0, 90, 0])  # same, degrees in
 
     w = Write(host="localhost")                 # rosbridge on the robot
-    w.move(right_arm, *q_deg)
+    w.move(right_arm, *q_rad)
 """
 
 from pib_sdk.control import (
@@ -33,11 +34,17 @@ from pib_sdk.kinematics import (
     ChainKinematics,
     HeadKinematics,
     camera_pose,
+    camera_pose_deg,
     fk,
+    fk_deg,
     get_hand_position_xyz,
+    get_hand_position_xyz_deg,
     ik,
+    ik_deg,
     pose_from_xyz_rpy,
+    pose_from_xyz_rpy_deg,
     pose_to_xyz_rpy,
+    pose_to_xyz_rpy_deg,
 )
 from pib_sdk.models import ModelError, ModelInfo, ModelResult, Models
 from pib_sdk.robot_model import (
@@ -55,11 +62,17 @@ from pib_sdk.robot_model import (
 )
 from pib_sdk.speech import Speak
 
-__version__ = "0.5.7"
+__version__ = "0.6.0"
 
 __all__ = [
     # kinematics
+    "camera_pose_deg",
     "fk",
+    "fk_deg",
+    "get_hand_position_xyz_deg",
+    "ik_deg",
+    "pose_from_xyz_rpy_deg",
+    "pose_to_xyz_rpy_deg",
     "ik",
     "get_hand_position_xyz",
     "camera_pose",

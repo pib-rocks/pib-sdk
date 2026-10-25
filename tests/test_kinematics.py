@@ -9,10 +9,10 @@ from pib_sdk.kinematics import (
     ArmKinematics,
     HeadKinematics,
     camera_pose,
-    fk,
-    ik,
-    pose_from_xyz_rpy,
-    pose_to_xyz_rpy,
+    fk_deg,
+    ik_deg,
+    pose_from_xyz_rpy_deg,
+    pose_to_xyz_rpy_deg,
 )
 from pib_sdk.robot_model import ArmSide
 
@@ -41,20 +41,20 @@ def _interior_configurations(arm: ArmKinematics, count: int, rng) -> list:
 # --------------------------------------------------------------------------- #
 @pytest.mark.parametrize("side", SIDES)
 def test_forward_kinematics_zero_pose_regression(side):
-    pose = fk(side, [0, 0, 0, 0, 0, 0])
+    pose = fk_deg(side, [0, 0, 0, 0, 0, 0])
     np.testing.assert_allclose(pose.translation, ZERO_POSE_PALM_MM[side], atol=1e-2)
 
 
 @pytest.mark.parametrize("side", SIDES)
 def test_forward_kinematics_rejects_wrong_joint_count(side):
     with pytest.raises(ValueError, match="Expected 6 joint values"):
-        fk(side, [0, 0, 0])
+        fk_deg(side, [0, 0, 0])
 
 
 def test_forward_kinematics_moves_with_the_shoulder():
     arm = ArmKinematics(ArmSide.RIGHT)
-    at_zero = arm.forward([0, 0, 0, 0, 0, 0]).translation
-    lifted = arm.forward([45, 0, 0, 0, 0, 0]).translation
+    at_zero = arm.forward_deg([0, 0, 0, 0, 0, 0]).translation
+    lifted = arm.forward_deg([45, 0, 0, 0, 0, 0]).translation
     assert np.linalg.norm(lifted - at_zero) > 100.0  # the palm travels decimetres
 
 
@@ -66,9 +66,9 @@ def test_ik_position_only_roundtrip(side):
     arm = ArmKinematics(side)
     rng = np.random.default_rng(seed=1)
     for q_deg in _interior_configurations(arm, count=6, rng=rng):
-        target = arm.forward(q_deg)
-        solution_deg = arm.inverse(xyz=target.translation)
-        reached = arm.forward(solution_deg)
+        target = arm.forward_deg(q_deg)
+        solution_deg = arm.inverse_deg(xyz=target.translation)
+        reached = arm.forward_deg(solution_deg)
         assert np.linalg.norm(reached.translation - target.translation) < 1e-2  # mm
 
 
@@ -77,10 +77,10 @@ def test_ik_full_pose_roundtrip(side):
     arm = ArmKinematics(side)
     rng = np.random.default_rng(seed=2)
     for q_deg in _interior_configurations(arm, count=4, rng=rng):
-        target = arm.forward(q_deg)
-        xyz, rpy_deg = pose_to_xyz_rpy(target)
-        solution_deg = arm.inverse(xyz=xyz, rpy_deg=rpy_deg)
-        reached = arm.forward(solution_deg)
+        target = arm.forward_deg(q_deg)
+        xyz, rpy_deg = pose_to_xyz_rpy_deg(target)
+        solution_deg = arm.inverse_deg(xyz=xyz, rpy_deg=rpy_deg)
+        reached = arm.forward_deg(solution_deg)
         assert np.linalg.norm(reached.translation - target.translation) < 1e-2  # mm
         rotation_error = reached.rotation.T @ target.rotation
         assert np.arccos(np.clip((np.trace(rotation_error) - 1) / 2, -1, 1)) < 1e-4  # rad
@@ -91,7 +91,7 @@ def test_ik_solutions_respect_joint_limits():
     lower_deg, upper_deg = arm.joint_limits_deg
     rng = np.random.default_rng(seed=3)
     for q_deg in _interior_configurations(arm, count=4, rng=rng):
-        solution_deg = arm.inverse(xyz=arm.forward(q_deg).translation)
+        solution_deg = arm.inverse_deg(xyz=arm.forward_deg(q_deg).translation)
         assert np.all(solution_deg >= lower_deg - 1e-6)
         assert np.all(solution_deg <= upper_deg + 1e-6)
 
@@ -99,14 +99,14 @@ def test_ik_solutions_respect_joint_limits():
 def test_ik_unreachable_target_raises():
     arm = ArmKinematics(ArmSide.RIGHT)
     with pytest.raises(ValueError, match="failed to converge"):
-        arm.inverse(xyz=[5000.0, 0.0, 0.0], restarts=2, max_iterations=50)
+        arm.inverse_deg(xyz=[5000.0, 0.0, 0.0], restarts=2, max_iterations=50)
 
 
 def test_ik_mask_constrains_selected_components_only():
     arm = ArmKinematics(ArmSide.RIGHT)
     target_xy = [-450.0, 80.0]
-    solution_deg = arm.inverse(xyz=[target_xy[0], target_xy[1], 0.0], mask=[1, 1, 0, 0, 0, 0])
-    reached = arm.forward(solution_deg).translation
+    solution_deg = arm.inverse_deg(xyz=[target_xy[0], target_xy[1], 0.0], mask=[1, 1, 0, 0, 0, 0])
+    reached = arm.forward_deg(solution_deg).translation
     assert abs(reached[0] - target_xy[0]) < 1e-2
     assert abs(reached[1] - target_xy[1]) < 1e-2
     assert abs(reached[2]) > 100.0  # z was left free and stays near the arm
@@ -114,16 +114,16 @@ def test_ik_mask_constrains_selected_components_only():
 
 def test_ik_rejects_malformed_mask():
     with pytest.raises(ValueError, match="6 elements"):
-        ik(ArmSide.RIGHT, xyz=[-400, 100, 900], mask=[1, 1, 1])
+        ik_deg(ArmSide.RIGHT, xyz=[-400, 100, 900], mask=[1, 1, 1])
 
 
 def test_ik_uses_the_initial_guess():
     arm = ArmKinematics(ArmSide.RIGHT)
     q_deg = np.array([20.0, -30.0, 10.0, 25.0, -40.0, 5.0])
-    target = arm.forward(q_deg)
-    solution_deg = arm.inverse(
+    target = arm.forward_deg(q_deg)
+    solution_deg = arm.inverse_deg(
         xyz=target.translation,
-        rpy_deg=pose_to_xyz_rpy(target)[1],
+        rpy_deg=pose_to_xyz_rpy_deg(target)[1],
         initial_guess_deg=q_deg + 1.0,
         restarts=0,
     )
@@ -136,15 +136,15 @@ def test_ik_uses_the_initial_guess():
 def test_pose_helpers_roundtrip():
     xyz = [-350.0, 120.0, 900.0]
     rpy_deg = [10.0, -20.0, 30.0]
-    pose = pose_from_xyz_rpy(xyz, rpy_deg)
-    xyz_back, rpy_back = pose_to_xyz_rpy(pose)
+    pose = pose_from_xyz_rpy_deg(xyz, rpy_deg)
+    xyz_back, rpy_back = pose_to_xyz_rpy_deg(pose)
     np.testing.assert_allclose(xyz_back, xyz, atol=1e-9)
     np.testing.assert_allclose(rpy_back, rpy_deg, atol=1e-9)
 
 
 def test_pose_from_xyz_rpy_validates_shape():
     with pytest.raises(ValueError, match="exactly 3"):
-        pose_from_xyz_rpy([1.0, 2.0])
+        pose_from_xyz_rpy_deg([1.0, 2.0])
 
 
 # --------------------------------------------------------------------------- #
@@ -173,14 +173,14 @@ def test_legacy_fk_class_matches_new_api():
     legacy = FK("right")
     assert len(legacy.joint_names) == 6
     np.testing.assert_allclose(
-        legacy.pose([0, 45, 0, 0, 90, 0]).translation,
-        fk("right", [0, 45, 0, 0, 90, 0]).translation,
+        legacy.pose_deg([0, 45, 0, 0, 90, 0]).translation,
+        fk_deg("right", [0, 45, 0, 0, 90, 0]).translation,
     )
 
 
 def test_legacy_ik_class_solves_with_old_signature():
     arm = ArmKinematics(ArmSide.RIGHT)
-    target = arm.forward([10, -20, 5, 30, -10, 0])
-    solution_deg = IK("right").solve(xyz=target.translation, tol=1e-4, max_steps=200)
-    reached = arm.forward(solution_deg)
+    target = arm.forward_deg([10, -20, 5, 30, -10, 0])
+    solution_deg = IK("right").solve_deg(xyz=target.translation, tol=1e-4, max_steps=200)
+    reached = arm.forward_deg(solution_deg)
     assert np.linalg.norm(reached.translation - target.translation) < 1e-2

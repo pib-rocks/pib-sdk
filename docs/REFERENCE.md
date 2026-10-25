@@ -172,8 +172,10 @@ degrees with `Rz(yaw) @ Ry(pitch) @ Rx(roll)`.
 
 | API | Signature and behavior |
 |---|---|
-| `pose_from_xyz_rpy` | `(xyz: Sequence[float], rpy_deg: Sequence[float] | None = None) -> pin.SE3`; builds a pose. `xyz` must contain three values (`ValueError` otherwise). An RPY sequence must unpack to three values. |
-| `pose_to_xyz_rpy` | `(pose: pin.SE3) -> tuple[np.ndarray, np.ndarray]`; returns copied XYZ millimetres and RPY degrees. Attribute/type errors from an invalid pose propagate. |
+| `pose_from_xyz_rpy` | `(xyz: Sequence[float], rpy_rad: Sequence[float] | None = None) -> pin.SE3`; builds a pose. `xyz` must contain three values (`ValueError` otherwise). An RPY sequence must unpack to three values. |
+| `pose_from_xyz_rpy_deg` | Same with `rpy_deg`; converts to radians and delegates. |
+| `pose_to_xyz_rpy` | `(pose: pin.SE3) -> tuple[np.ndarray, np.ndarray]`; returns copied XYZ millimetres and RPY radians. Attribute/type errors from an invalid pose propagate. |
+| `pose_to_xyz_rpy_deg` | Same, returning RPY degrees. |
 
 ### `ChainKinematics`
 
@@ -185,13 +187,18 @@ for a chain. Do not share one instance across concurrent solver calls.
 | `degrees_of_freedom` | `int`; number of configuration values |
 | `joint_names` | `list[str]`; copied URDF names in vector order |
 | `motor_names` | `list[str]`; copied firmware names in the same order |
-| `joint_limits_deg` | `(lower: np.ndarray, upper: np.ndarray)` in degrees |
-| `named_configuration(name: str)` | `np.ndarray` degrees; raises `KeyError` with available names if unknown |
-| `forward(joint_angles_deg: Iterable[float])` | `pin.SE3`; raises `ValueError` unless the vector length equals the DOF |
+| `joint_limits_rad` | `(lower: np.ndarray, upper: np.ndarray)` in radians |
+| `joint_limits_deg` | Same in degrees. |
+| `named_configuration(name: str)` | `np.ndarray` radians; raises `KeyError` with available names if unknown |
+| `named_configuration_deg(name: str)` | Same in degrees. |
+| `forward(joint_angles_rad: Iterable[float])` | `pin.SE3`; raises `ValueError` unless the vector length equals the DOF |
+| `forward_deg(joint_angles_deg: Iterable[float])` | Same, taking degrees. |
 
-`inverse(xyz, rpy_deg=None, initial_guess_deg=None, tolerance=1e-4,
+`inverse(xyz, rpy_rad=None, initial_guess_rad=None, tolerance=1e-4,
 max_iterations=200, mask=None, restarts=50, respect_limits=True) ->
-np.ndarray` solves IK and returns degrees. `xyz` is three millimetre
+np.ndarray` solves IK and returns radians; the legacy keywords `rpy_deg` and
+`initial_guess_deg` are still accepted and then return degrees
+(`inverse_deg` is the explicit degree entry point). `xyz` is three millimetre
 coordinates. Omitting RPY selects position-only IK; supplying it selects all
 six pose-error components. `mask` overrides that choice with six truthy/falsy
 entries ordered `[x, y, z, rx, ry, rz]`. `tolerance` is the norm threshold,
@@ -206,19 +213,24 @@ propagate for invalid numeric values.
 `ArmKinematics(side: ArmSide | str = ArmSide.RIGHT)` selects a cached arm
 model. Invalid strings raise `ValueError`. `HeadKinematics()` selects the
 two-joint camera chain; its
-`camera_pose(pan_deg: float = 0, tilt_deg: float = 0) -> pin.SE3` is forward
-kinematics for `turn_head_motor` then `tilt_forward_motor`.
+`camera_pose(pan_rad: float = 0, tilt_rad: float = 0) -> pin.SE3` is forward
+kinematics for `turn_head_motor` then `tilt_forward_motor`; `camera_pose_deg`
+is the degree twin.
 
 ### Convenience functions and compatibility classes
 
 | API | Signature, return, and errors |
 |---|---|
-| `fk` | `(side: ArmSide | str, q_deg: Iterable[float]) -> pin.SE3`; one-call arm FK; same errors as `ArmKinematics.forward`. |
-| `ik` | `(side, *, xyz, rpy_deg=None, **solver_options) -> np.ndarray`; forwards options and errors to `ChainKinematics.inverse`. |
-| `camera_pose` | `(pan_deg=0.0, tilt_deg=0.0) -> pin.SE3`; one-call head FK. |
-| `get_hand_position_xyz` | `(side, *, telemetry_host="localhost", telemetry_port=9090, telemetry=None) -> tuple[float, float, float]`; reads the six last-commanded motor angles and returns hand-tip XYZ in mm. It owns a temporary `Telemetry` only when none is supplied. Raises `KeyError` for missing readings plus connection/service/model errors. This is not encoder feedback. |
-| `FK` | `(side=ArmSide.RIGHT)` compatibility wrapper. `pose(q_deg) -> pin.SE3` calls arm FK; `joint_names` is captured at construction. |
-| `IK` | `(side=ArmSide.RIGHT)` compatibility wrapper. `solve(xyz, rpy_deg=None, q0_deg=None, tol=1e-4, max_steps=100, custom_mask=None) -> np.ndarray` maps old option names to `inverse`; errors propagate. |
+| `fk` | `(side: ArmSide | str, q_rad: Iterable[float]) -> pin.SE3`; one-call arm FK; same errors as `ArmKinematics.forward`. |
+| `fk_deg` | Same with joint angles in degrees. |
+| `ik` | `(side, *, xyz, rpy_rad=None, **solver_options) -> np.ndarray`; forwards options and errors to `ChainKinematics.inverse`. |
+| `ik_deg` | Same with `rpy_deg`; returns degrees. |
+| `camera_pose` | `(pan_rad=0.0, tilt_rad=0.0) -> pin.SE3`; one-call head FK. |
+| `camera_pose_deg` | Same with pan/tilt in degrees. |
+| `get_hand_position_xyz_deg` | Same, taking and returning degrees. |
+| `get_hand_position_xyz` | `(side, *, telemetry_host="localhost", telemetry_port=9090, telemetry=None) -> tuple[float, float, float]` with radians; reads the six last-commanded motor angles and returns hand-tip XYZ in mm. It owns a temporary `Telemetry` only when none is supplied. Raises `KeyError` for missing readings plus connection/service/model errors. This is not encoder feedback. |
+| `FK` | `(side=ArmSide.RIGHT)` compatibility wrapper. `pose(q_rad) -> pin.SE3` calls arm FK, `pose_deg(q_deg)` takes degrees; `joint_names` is captured at construction. |
+| `IK` | `(side=ArmSide.RIGHT)` compatibility wrapper. `solve(...)` maps old option names to `inverse` and returns radians, `solve_deg(...)` returns degrees; errors propagate. |
 
 ```python
 from pib_sdk import ArmKinematics

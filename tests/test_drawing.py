@@ -87,7 +87,7 @@ def test_drawing_surface_point_mm_at_identity_pose():
 
 
 def test_sketch_to_trajectory_produces_a_playable_trajectory():
-    reachable_center = ArmKinematics(ArmSide.RIGHT).forward(
+    reachable_center = ArmKinematics(ArmSide.RIGHT).forward_deg(
         RIGHT_ARM.named_configurations_deg["observe"]
     )
     surface = DrawingSurface(

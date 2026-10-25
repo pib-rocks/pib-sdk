@@ -5,8 +5,9 @@ control, speech, live telemetry, and everything a user can create in
 **Cerebra** (pib's web UI) — poses, Blockly programs, RGB-button bindings,
 the voice assistant, and more.
 
-Positions are in **millimetres**, joint angles in **degrees**, and orientations
-as **roll–pitch–yaw** (see [Conventions](#conventions)).
+Positions are in **millimetres**, joint angles in **radians** (every angle-taking
+function has a `*_deg` sibling that takes or returns degrees), and orientations as
+**roll–pitch–yaw** (see [Conventions](#conventions)).
 
 ## Documentation
 
@@ -79,9 +80,10 @@ angle. See [Joint ↔ motor names](#joint--motor-names).
 
 ### Units and conventions
 
-Public movement and kinematics APIs use degrees and millimetres. The SDK
-converts motor commands to pib-backend's internal hundredths-of-a-degree
-representation at the service boundary. The exception is the low-level
+Public movement and kinematics APIs use radians and millimetres, with `*_deg`
+wrappers for callers that think in degrees. The SDK converts motor commands to
+pib-backend's internal hundredths-of-a-degree representation at the service
+boundary. The exception is the low-level
 `Write.send_timed_trajectory`, whose positions are deliberately already in
 those internal units. Depth pixels are unsigned 16-bit millimetres, where
 zero means invalid.
@@ -138,12 +140,15 @@ pip install pib-sdk
 ```python
 from pib_sdk import fk, ik
 
-# Inverse kinematics: target position in millimetres -> joint angles in degrees
-q_deg = ik("right", xyz=[-400, 100, 900])
-print("IK angles:", q_deg)
+# Inverse kinematics: target position in millimetres -> joint angles in radians
+q_rad = ik("right", xyz=[-400, 100, 900])
+print("IK angles:", q_rad)
 
-# Forward kinematics: joint angles in degrees -> end-effector pose
-pose = fk("right", [0, 45, 0, 0, 90, 0])
+# Forward kinematics: joint angles in radians -> end-effector pose
+import numpy as np
+pose = fk("right", np.deg2rad([0, 45, 0, 0, 90, 0]))
+# ... or with degrees in and out:
+pose = fk_deg("right", [0, 45, 0, 0, 90, 0])
 print("palm position (mm):", pose.translation)
 print("palm orientation (3x3):\n", pose.rotation)
 ```
@@ -295,9 +300,10 @@ python -m pib_sdk.robot_model
 ## Conventions
 
 * **Positions**: millimetres.
-* **Joint angles**: degrees. Order is base → tip, as printed by
-  `python -m pib_sdk.robot_model`.
-* **Orientation**: roll–pitch–yaw in degrees, applied as
+* **Joint angles**: radians (canonical). Order is base → tip, as printed by
+  `python -m pib_sdk.robot_model`. Each angle-taking function has a `*_deg`
+  sibling for degrees; the wrappers convert and delegate, they carry no logic.
+* **Orientation**: roll–pitch–yaw in radians (or degrees via `*_deg`), applied as
   `R = Rz(yaw) · Ry(pitch) · Rx(roll)` (ZYX — the same convention the previous
   Robotics Toolbox implementation used).
 * **Poses**: [`pinocchio.SE3`](https://github.com/stack-of-tasks/pinocchio),
@@ -309,8 +315,10 @@ python -m pib_sdk.robot_model
 
 | Option | Default | Meaning |
 |--------|---------|---------|
-| `rpy_deg` | `None` | Target orientation. `None` → position-only IK. |
-| `initial_guess_deg` | zeros | Starting joint configuration (degrees). |
+| `rpy_rad` | `None` | Target orientation in radians. `None` → position-only IK. |
+| `rpy_deg` | `None` | Same target in degrees; the result is then returned in degrees (legacy path). |
+| `initial_guess_rad` | zeros | Starting joint configuration in radians. |
+| `initial_guess_deg` | — | Starting configuration in degrees; only together with `rpy_deg`. |
 | `tolerance` | `1e-4` | Convergence threshold on the pose error (mm-scaled). |
 | `max_iterations` | `200` | Solver iterations per attempt. |
 | `mask` | auto | 6-element `[x, y, z, rx, ry, rz]` selector over the pose error. |
