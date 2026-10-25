@@ -80,7 +80,9 @@ def _radians_to_degrees(values: Sequence[float]) -> np.ndarray:
     return np.rad2deg(np.asarray(values, dtype=float))
 
 
-def pose_from_xyz_rpy(xyz: Sequence[float], rpy_rad: Sequence[float] | None = None) -> pin.SE3:
+def pose_from_xyz_rpy(
+    xyz: Sequence[float], rpy_rad: Sequence[float] | None = None
+) -> pin.SE3:
     """Build an :class:`pinocchio.SE3` from a position (mm) and optional RPY (rad)."""
     translation = np.asarray(xyz, dtype=float)
     if translation.shape != (3,):
@@ -89,14 +91,20 @@ def pose_from_xyz_rpy(xyz: Sequence[float], rpy_rad: Sequence[float] | None = No
         return pin.SE3(np.eye(3), translation)
     roll, pitch, yaw = np.asarray(rpy_rad, dtype=float)
     rotation = (
-        pin.utils.rotate("z", yaw) @ pin.utils.rotate("y", pitch) @ pin.utils.rotate("x", roll)
+        pin.utils.rotate("z", yaw)
+        @ pin.utils.rotate("y", pitch)
+        @ pin.utils.rotate("x", roll)
     )
     return pin.SE3(rotation, translation)
 
 
-def pose_from_xyz_rpy_deg(xyz: Sequence[float], rpy_deg: Sequence[float] | None = None) -> pin.SE3:
+def pose_from_xyz_rpy_deg(
+    xyz: Sequence[float], rpy_deg: Sequence[float] | None = None
+) -> pin.SE3:
     """Build an SE3 from a position (mm) and optional RPY (deg)."""
-    return pose_from_xyz_rpy(xyz, _degrees_to_radians(rpy_deg) if rpy_deg is not None else None)
+    return pose_from_xyz_rpy(
+        xyz, _degrees_to_radians(rpy_deg) if rpy_deg is not None else None
+    )
 
 
 def pose_to_xyz_rpy(pose: pin.SE3) -> tuple[np.ndarray, np.ndarray]:
@@ -112,6 +120,71 @@ def pose_to_xyz_rpy_deg(pose: pin.SE3) -> tuple[np.ndarray, np.ndarray]:
     """Decompose an SE3 pose into ``(xyz_mm, rpy_deg)`` in the ZYX convention."""
     xyz, rpy_rad = pose_to_xyz_rpy(pose)
     return xyz, _radians_to_degrees(rpy_rad)
+
+
+# Fixed rotation from pib's model base frame to REP-103 (+90 deg about Z).
+_MODEL_TO_REP103: pin.SE3 = pin.SE3(pin.utils.rotate("z", np.pi / 2.0), np.zeros(3))
+_REP103_TO_MODEL: pin.SE3 = pin.SE3(pin.utils.rotate("z", -np.pi / 2.0), np.zeros(3))
+
+
+def to_rep103(value: pin.SE3 | Sequence[float]) -> pin.SE3 | np.ndarray:
+    """Convert a position or pose from pib's model frame to REP-103.
+
+    The model frame uses ``+Z`` up, ``-Y`` forward (out of the chest), and ``+X``
+    as the robot's own left. REP-103 is that frame rotated by ``-90`` degrees
+    about ``Z``, so model → REP-103 applies ``+90`` degrees about ``Z``:
+
+    ``X_rep = -Y_model``, ``Y_rep = +X_model``, ``Z_rep = Z_model``.
+
+    Parameters
+    ----------
+    value:
+        Either a 3-vector position in millimetres or a :class:`pinocchio.SE3`
+        pose (translation in mm, rotation in the model base frame). In both
+        cases translation and rotation are converted.
+
+    Returns
+    -------
+    np.ndarray or pin.SE3
+        The same kind of value expressed in the REP-103 base frame.
+
+    Example
+    -------
+    A point on the left palm at zero configuration is
+    ``(626.2, 27.5, 994.5)`` mm in the model frame::
+
+        >>> import numpy as np
+        >>> from pib_sdk.kinematics import pose_from_xyz_rpy, to_rep103
+        >>> model_pose = pose_from_xyz_rpy([626.2, 27.5, 994.5])
+        >>> rep_pose = to_rep103(model_pose)
+        >>> np.round(rep_pose.translation, 1)
+        array([-27.5, 626.2, 994.5])
+
+    See :func:`from_rep103` for the inverse map.
+    """
+    if isinstance(value, pin.SE3):
+        return _MODEL_TO_REP103 * value
+    translation = np.asarray(value, dtype=float)
+    if translation.shape != (3,):
+        raise ValueError("position must have exactly 3 elements")
+    return (_MODEL_TO_REP103.rotation @ translation).copy()
+
+
+def from_rep103(value: pin.SE3 | Sequence[float]) -> pin.SE3 | np.ndarray:
+    """Convert a position or pose from REP-103 back to pib's model frame.
+
+    This is the inverse of :func:`to_rep103` (rotation by ``-90`` degrees about
+    ``Z``: ``X_model = +Y_rep``, ``Y_model = -X_rep``, ``Z_model = Z_rep``).
+
+    Parameters and return type match :func:`to_rep103`, but directions are
+    reversed.
+    """
+    if isinstance(value, pin.SE3):
+        return _REP103_TO_MODEL * value
+    translation = np.asarray(value, dtype=float)
+    if translation.shape != (3,):
+        raise ValueError("position must have exactly 3 elements")
+    return (_REP103_TO_MODEL.rotation @ translation).copy()
 
 
 class ChainKinematics:
@@ -232,7 +305,9 @@ class ChainKinematics:
         """
         if rpy_deg is not None or initial_guess_deg is not None:
             if rpy_rad is not None or initial_guess_rad is not None:
-                raise ValueError("pass either radian or degree angle arguments, not both")
+                raise ValueError(
+                    "pass either radian or degree angle arguments, not both"
+                )
             return self.inverse_deg(
                 xyz=xyz,
                 rpy_deg=rpy_deg,
@@ -265,7 +340,9 @@ class ChainKinematics:
                 f"Inverse kinematics failed to converge for the requested pose{within}"
             )
         if respect_limits:
-            solution_rad = np.clip(solution_rad, self._joint_lower_limits, self._joint_upper_limits)
+            solution_rad = np.clip(
+                solution_rad, self._joint_lower_limits, self._joint_upper_limits
+            )
         return solution_rad.copy()
 
     def inverse_deg(
@@ -282,7 +359,9 @@ class ChainKinematics:
         """Return joint angles (degrees) that reach the requested pose."""
         rpy_rad = _degrees_to_radians(rpy_deg) if rpy_deg is not None else None
         guess_rad = (
-            _degrees_to_radians(list(initial_guess_deg)) if initial_guess_deg is not None else None
+            _degrees_to_radians(list(initial_guess_deg))
+            if initial_guess_deg is not None
+            else None
         )
         return _radians_to_degrees(
             self.inverse(
@@ -351,7 +430,14 @@ class ChainKinematics:
         model, frame_id = self._chain.model, self._chain.tip_frame_id
         identity = np.eye(self.degrees_of_freedom)
         weights = np.array(
-            [1.0, 1.0, 1.0, _ORIENTATION_WEIGHT, _ORIENTATION_WEIGHT, _ORIENTATION_WEIGHT]
+            [
+                1.0,
+                1.0,
+                1.0,
+                _ORIENTATION_WEIGHT,
+                _ORIENTATION_WEIGHT,
+                _ORIENTATION_WEIGHT,
+            ]
         )[mask]
         joint_angles_rad = np.array(seed_rad, dtype=float)
         damping = 1e-2
@@ -380,7 +466,9 @@ class ChainKinematics:
             else:
                 damping = min(damping * 4.0, 1e6)
 
-        final_error = float(np.linalg.norm(self._pose_error(joint_angles_rad, target, mask)))
+        final_error = float(
+            np.linalg.norm(self._pose_error(joint_angles_rad, target, mask))
+        )
         return joint_angles_rad, final_error < tolerance, final_error
 
     def _solve_with_restarts(
@@ -408,7 +496,9 @@ class ChainKinematics:
         random_generator = np.random.default_rng(seed=0)
         lower, upper = self._joint_lower_limits, self._joint_upper_limits
         for _ in range(restarts):
-            random_seed = lower + (upper - lower) * random_generator.random(self.degrees_of_freedom)
+            random_seed = lower + (upper - lower) * random_generator.random(
+                self.degrees_of_freedom
+            )
             solution, converged, error = self._solve_once(
                 target, mask, random_seed, tolerance, max_iterations
             )
@@ -418,7 +508,9 @@ class ChainKinematics:
                 best_solution, best_error = solution, error
         return best_solution, False
 
-    def _within_limits(self, joint_angles_rad: np.ndarray, tolerance: float = 1e-6) -> bool:
+    def _within_limits(
+        self, joint_angles_rad: np.ndarray, tolerance: float = 1e-6
+    ) -> bool:
         return bool(
             np.all(joint_angles_rad >= self._joint_lower_limits - tolerance)
             and np.all(joint_angles_rad <= self._joint_upper_limits + tolerance)
