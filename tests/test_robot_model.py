@@ -124,16 +124,40 @@ def test_missing_urdf_file_raises_file_not_found(tmp_path):
         build_chain_model(RIGHT_ARM, urdf_path=tmp_path / "nowhere.urdf")
 
 
-def test_forearm_roll_axis_correction_applied_once_per_cached_model():
-    """Building an arm chain twice must not double-apply FOREARM_ROLL_AXIS_CORRECTION."""
-    robot_model._FULL_MODEL_CACHE.clear()
-    robot_model._CHAIN_MODEL_CACHE.clear()
-    first = get_arm_model(ArmSide.LEFT)
-    second = get_arm_model(ArmSide.LEFT)
-    assert first is second
-    np.testing.assert_allclose(
-        first.joint_lower_limits, second.joint_lower_limits, atol=1e-15
-    )
+def _axis_invariants(chain) -> list[tuple[float, float]]:
+    """Angle and line distance between each pair of consecutive joint axes."""
+    axes = robot_model._chain_joint_axes(chain)
+    result = []
+    for index in range(len(axes) - 1):
+        _, first_axis, first_origin = axes[index]
+        _, second_axis, second_origin = axes[index + 1]
+        angle = np.degrees(
+            np.arccos(np.clip(abs(np.dot(first_axis, second_axis)), -1.0, 1.0))
+        )
+        delta = second_origin - first_origin
+        cross = np.cross(first_axis, second_axis)
+        if np.linalg.norm(cross) < 1e-9:
+            distance = np.linalg.norm(delta - np.dot(delta, first_axis) * first_axis)
+        else:
+            distance = abs(np.dot(delta, cross / np.linalg.norm(cross)))
+        result.append((float(angle), float(distance)))
+    return result
+
+
+def test_arm_chains_are_mirror_symmetric():
+    """Both arms must keep identical axis geometry - nothing may rotate them per side.
+
+    Guards the revert of the PR-2055 interim axis correction, which aligned each forearm
+    axis to "own joint origin -> wrist joint origin", introduced gauge dependence and left
+    the arms 28.4 mm apart in the elbow-to-forearm axis distance.
+    """
+    left = _axis_invariants(get_arm_model(ArmSide.LEFT))
+    right = _axis_invariants(get_arm_model(ArmSide.RIGHT))
+    assert len(left) == len(right) == 5
+    for (left_angle, left_distance), (right_angle, right_distance) in zip(left, right):
+        assert left_angle == pytest.approx(90.0, abs=0.05)
+        assert right_angle == pytest.approx(90.0, abs=0.05)
+        assert left_distance == pytest.approx(right_distance, abs=0.1)
 
 
 def test_camera_frame_correction_applied_once_per_cached_model():

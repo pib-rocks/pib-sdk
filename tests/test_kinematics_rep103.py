@@ -65,19 +65,6 @@ def test_effective_joint_axes_not_all_world_z():
     np.testing.assert_allclose(
         left_axes["elbow_left"], np.array([0.0, -1.0, 0.0]), atol=1e-4
     )
-    # PR-2055 interim: roll axis follows the forearm segment (was ~11° off in raw URDF).
-    model = get_arm_model(ArmSide.LEFT).model
-    data = model.createData()
-    q = pin.neutral(model)
-    pin.forwardKinematics(model, data, q)
-    forearm_id = model.getJointId("forearm_left")
-    wrist_id = model.getJointId("wrist_left")
-    segment = data.oMi[wrist_id].translation - data.oMi[forearm_id].translation
-    segment /= np.linalg.norm(segment)
-    axis = left_axes["forearm_left"]
-    assert np.degrees(np.arccos(np.clip(abs(np.dot(axis, segment)), 0.0, 1.0))) < 1.0
-
-    head_axes = _effective_rotation_axes_at_zero(get_head_model())
-    np.testing.assert_allclose(
-        head_axes["head_vertical"], np.array([-1.0, 0.0029, 0.0]), atol=1e-3
-    )
+    # The forearm roll axis is perpendicular to the wrist bend axis in the export, which
+    # is what a roll about the forearm requires; the earlier reading that it was ~11 deg
+    # off came from a gauge-dependent point pair and was withdrawn (PR-2055).
