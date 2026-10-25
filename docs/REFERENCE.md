@@ -246,10 +246,34 @@ joint). Effective axes in the table above are after that patch; roll motion is a
 pure spin about the forearm centreline. Remove this layer when PR-2055 lands and
 the Onshape export writes the correct axis on disk.
 
+### IK failure types
+
+All IK failures subclass `InverseKinematicsError` (itself a `ValueError`), so
+legacy `except ValueError` handlers still catch them. Distinct types make
+negative cases testable:
+
+| Exception | When raised |
+|---|---|
+| `InverseKinematicsWorkspaceError` | Target distance from the base exceeds the sampled maximum reach (2000 random in-limit configurations, +5% margin). |
+| `InverseKinematicsBehindBodyError` | Target model-frame `Y` is above 600 mm (behind the torso; `-Y` is forward). |
+| `InverseKinematicsJointLimitError` | With `respect_limits=True`, the solver converged only on out-of-limit joint vectors. |
+| `InverseKinematicsConvergenceError` | No seed met `tolerance` within `max_iterations` and `restarts`. |
+
+Successful calls set `ChainKinematics.last_inverse_stats` to
+`iterations`, `restarts_used`, `pose_error_norm`, `elapsed_ms`, and `converged`.
+
+Measured position-only sweep (300 interior FK seeds per arm, `tolerance=1e-4`,
+`restarts=50`, seed 42, pinocchio 4.1 on the bundled URDF): both arms reached
+100% success; worst tip error 0.095–0.100 mm; median solve 1.5–2.6 ms, p95
+8.1–9.1 ms (median iterations 8–14, p95 19–21). Joint-space error vs the seed
+is not unique and is not gated.
+
 ### `ChainKinematics`
 
 `ChainKinematics(chain: ChainModel)` reuses one mutable Pinocchio data buffer
-for a chain. Do not share one instance across concurrent solver calls.
+for a chain. Do not share one instance across concurrent solver calls; each
+instance owns one `data` object mutated by FK/IK. Sequential solves on the same
+instance are independent.
 
 | Member | Type / purpose |
 |---|---|
@@ -274,9 +298,11 @@ entries ordered `[x, y, z, rx, ry, rz]`. `tolerance` is the norm threshold,
 `max_iterations` applies to each attempt, and `restarts` is the number of
 deterministic random in-limit seeds after the initial guess.
 
-With `respect_limits=True`, only an in-limit solution is returned.
-`ValueError` is raised for malformed XYZ/RPY/mask input, wrong vector sizes,
-or non-convergence. Numeric conversion and linear-algebra errors can
+With `respect_limits=True`, only an in-limit solution is returned (clipped
+before return). Malformed XYZ/RPY/mask input or wrong vector sizes raise
+`ValueError`. IK failures raise the types in **IK failure types** above;
+`InverseKinematicsConvergenceError` retains the previous
+``failed to converge`` wording. Numeric conversion and linear-algebra errors can
 propagate for invalid numeric values.
 
 `ArmKinematics(side: ArmSide | str = ArmSide.RIGHT)` selects a cached arm
