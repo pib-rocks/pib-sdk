@@ -217,6 +217,27 @@ at the neutral configuration (not the raw ``axis`` element).
 | head | `head_horizontal` | ``[0, 0, -1]`` |
 | head | `head_vertical` | ``[-1, +0.0029, 0]`` (tilt link rpy) |
 
+Read those vectors as **base-frame components at the neutral configuration, not
+as mechanical roles**. At the neutral configuration the whole arm is rotated, so
+a joint that mechanically rolls about the forearm's long axis still has diagonal
+components here. What each joint does relative to its own limb is measured as
+the angle between its axis and the next link's segment:
+
+| Joint | Angle axis/segment | Offset axis <-> segment | Mechanical role |
+|---|---|---|---|
+| `forearm_left` | 11.0° | 30.0 mm on a 157.3 mm segment | roll about the forearm's long axis |
+| `forearm_right` | 10.7° | 29.2 mm on a 157.1 mm segment | roll (mirrored) |
+| `wrist_left` | 80.5° | -- | bend, perpendicular to the forearm |
+
+The roll axis therefore follows the forearm as the elbow bends: it is 11.0° off
+the segment for elbow 0°, 30°, 60° and 90°, with the same 30.0 mm offset, i.e.
+the axis **rotates with the segment** and never stays diagonal in the base frame.
+That 11.0° / 30.0 mm residual is a property of the exported geometry, not of the
+reading: rotating `forearm_left` by 30° displaces the wrist by 15.5 mm, which a
+pure roll about the forearm centreline would not do. A physical check (command a
+roll and watch whether the hand orbits) decides whether the URDF placement or the
+expectation is off.
+
 ### `ChainKinematics`
 
 `ChainKinematics(chain: ChainModel)` reuses one mutable Pinocchio data buffer

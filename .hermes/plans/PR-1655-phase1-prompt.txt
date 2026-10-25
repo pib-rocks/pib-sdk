@@ -1,0 +1,34 @@
+Implement Phase 1 of the plan at `/home/pib/opencode/pib-sdk/.hermes/plans/PR-1655-plan.md`. READ THE PLAN FIRST — it has verified facts, the exact design, and hard constraints. Follow it exactly.
+
+SCOPE — ONLY Phase 1 (function + export + docstring). Do NOT write tests yet (Phase 2).
+
+1. In `src/pib_sdk/kinematics.py`, add `get_hand_position_xyz(...)` per the plan's Design section:
+   - Signature: `get_hand_position_xyz(side, *, telemetry_host="localhost", telemetry_port=9090, telemetry=None) -> tuple[float, float, float]`
+   - If `telemetry` is None: lazily `from pib_sdk.telemetry import Telemetry`, construct
+     `Telemetry(host=telemetry_host, port=telemetry_port)` via context manager, gather positions,
+     and ensure it is closed. (VERIFIED: kinematics.py imports NO roslibpy — use the lazy import
+     inside the function, not at module top.)
+   - If `telemetry` is provided: use it directly (caller owns lifecycle) — this is how offline
+     tests inject a fake.
+   - `arm = ArmKinematics(side)`; `positions = telemetry.get_positions_deg(arm.motor_names)`;
+     build `q = [positions[m] for m in arm.motor_names]`; assert every motor is present (raise a
+     clear `KeyError`/`ValueError` naming the missing motor if not).
+   - `pose = arm.forward(q)`; return `tuple(pose.translation)` (x,y,z in mm).
+   - Docstring must state: positions in degrees; return XYZ in millimetres; joints read via the
+     SDK's position reader reflect the last COMMANDED position, not live encoder feedback (so a
+     stalled or hand-moved joint is not detected).
+2. In `src/pib_sdk/__init__.py`, import `get_hand_position_xyz` and add it to `__all__`.
+
+Do NOT touch any other API (`fk`, `ik`, `ArmKinematics`, `Telemetry` must stay unchanged). Do NOT
+modify telemetry.py, robot_model.py, or control.py.
+
+SELF-CHECK (run and observe REAL output):
+- `PYTHONPATH=src python3 -c "import pib_sdk; assert hasattr(pib_sdk, 'get_hand_position_xyz'); print('exported OK')"`
+- `PYTHONPATH=src python3 -m pytest tests/test_kinematics.py tests/test_telemetry.py -q` → still green (non-regression, no new tests yet)
+
+HARD CONSTRAINTS (all apply):
+- Stay on branch `PR-1655`. Do NOT merge to develop. Do NOT push.
+- Do NOT commit `.hermes/plans/**`. You MAY commit on PR-1655 (`feat: PR-1655 ...`). Do NOT commit if the import check or the existing tests fail.
+- Report REAL results; do not fabricate.
+
+FINAL REPORT: the exact function you added (past it), the __init__.py export line, the output of the import self-check, the pytest result (counts), and confirmation you did not change existing APIs and did not merge/push.

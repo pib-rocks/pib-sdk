@@ -1,0 +1,28 @@
+Implement Phase 2 of the plan at `/home/pib/opencode/pib-sdk/.hermes/plans/PR-1655-plan.md`. READ THE PLAN FIRST.
+
+Phase 1 is ALREADY DONE and verified on branch `PR-1655`: `get_hand_position_xyz(side, *, telemetry_host="localhost", telemetry_port=9090, telemetry=None)` exists in `src/pib_sdk/kinematics.py` and is exported from `src/pib_sdk/__init__.py`. It lazily builds a Telemetry when `telemetry is None`, else uses the injected `telemetry` (caller owns lifecycle), reads `arm.motor_names` positions, and returns `tuple(pose.translation)` (mm). Missing motors raise `KeyError`. Do NOT modify these — only add tests.
+
+SCOPE — ONLY Phase 2: add ONE new offline test file `tests/test_hand_position.py` (+ a tiny fake harness if needed) using the repo's conftest pattern.
+
+VERIFIED how Telemetry is faked offline (from tests/conftest.py + tests/test_telemetry.py):
+- `from conftest import patch_roslibpy`; `patch_roslibpy(monkeypatch, telemetry_module)` returns `(topics, services)` where `services["get_joint_position"].responses[motor_name] = {...}`.
+- BUT NOTE: `Telemetry.__init__` also subscribes to the `motor_current` topic, so the fake must support that. Mirror EXACTLY how test_telemetry.py passes the monkeypatch — reuse `patch_roslibpy(monkeypatch, telemetry_module)` where `telemetry_module` is `pib_sdk.telemetry`.
+- Simpler and preferred for this unit test: since `get_hand_position_xyz` only calls `source.get_positions_deg(names)` on the injected object, you can ALSO pass a plain fake object with a `get_positions_deg` method (no roslibpy at all). This is the cleanest injection. Use this approach.
+
+REQUIRED TESTS in `tests/test_hand_position.py` (offline, no network):
+1. `test_returned_xyz_matches_fk` — fake `get_positions_deg` returns a known dict for the arm's motors; assert `get_hand_position_xyz("right", telemetry=fake)` equals `tuple(fk("right", q).translation)` where `q` is built from that same dict in `ArmKinematics("right").motor_names` order. This proves the function uses the same FK.
+2. `test_uses_motor_names_in_correct_order` — fake records the `names` arg it was called with; assert it equals `ArmKinematics("right").motor_names` exactly.
+3. `test_raises_on_missing_motor` — fake returns a dict missing one arm motor; assert `pytest.raises(KeyError)` and that the exception message names the missing motor.
+4. `test_left_and_right_both_work` — same consistency as test 1 but for `"left"` (and optionally assert the two arms give different values for a zero pose, to be sure side routing works).
+
+CONSTRAINTS:
+- Add ONLY `tests/test_hand_position.py`. Do NOT modify `src/pib_sdk/**` or existing tests.
+- All tests MUST be offline (no real rosbridge); use the fake `get_positions_deg` object injection — do NOT construct a real `Telemetry(host=...)` in the tests.
+- Stay on branch `PR-1655`. Do NOT merge to develop. Do NOT push. Do NOT commit `.hermes/plans/**`. You MAY commit (`test: PR-1655 ...`). Do NOT commit if tests fail.
+- Report REAL test counts; do not fabricate.
+
+SELF-CHECK (run and observe REAL output):
+- `PYTHONPATH=src python3 -m pytest tests/test_hand_position.py -q` → all new tests pass
+- `PYTHONPATH=src python3 -m pytest tests/ -q` → full suite green, no regressions
+
+FINAL REPORT: the real test counts for both commands, the list of test names in the new file, the exact fake you used, and confirmation you did not modify src/** or merge/push.

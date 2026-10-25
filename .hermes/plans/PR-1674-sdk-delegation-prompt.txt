@@ -1,0 +1,37 @@
+Implement Scope 2 of PR-1674 (pib_sdk depth functions). Ticket: https://pib-rocks.atlassian.net/browse/PR-1674
+Repo: pib-sdk — /home/pib/opencode/pib-sdk, branch `PR-1674-sdk` (from main `5491753`).
+Trunk is `main` (no develop). This is the SDK-side consumer of the camera depth ROS2 services that Scope 1
+(pib-backend PR #241, branch PR-1674-backend) added: services `get_depth_frame` / `get_distance_at_px`.
+
+## Goal
+Extend `pib_sdk.features.camera.Camera` with depth functionality so own projects can:
+- get a depth frame, and
+- get the depth/distance at an (x, y) pixel of the current camera image,
+calling the ROS2 services (over rosbridge) added in Scope 1.
+
+## Scope-1 service contract (verified in pib-backend PR-1674-backend)
+- `GetDepthFrame.srv` -> fields: int32 width, int32 height, string encoding, string depth_base64.
+  encoding "16UC1"; depth_base64 is little-endian uint16 millimeters (numpy.frombuffer(..., uint16).reshape((height,width))); 0 = invalid.
+- `GetDistanceAtPx.srv` request int32 x, int32 y -> response float32 distance_mm. 0.0 = missing cache/out-of-bounds/invalid.
+- Services live on the camera ROS node (same rosbridge host/port as get_camera_image).
+
+## Desired pib_sdk API (in src/pib_sdk/features/camera.py, class Camera)
+- `get_depth_frame(timeout=10.0) -> numpy.ndarray | None` — call get_depth_frame service, decode depth_base64 -> uint16 (H,W) mm array (0 = invalid). Return None on no data/error.
+- `get_distance_at_px(x: int, y: int, timeout=10.0) -> float` — call get_distance_at_px service; return distance_mm (float).
+- Keep the existing snapshot API (get_snapshot_bytes / save_snapshot) and the Camera host/port/context-manager/close behaviour unchanged.
+- Optional but helpful: helper `save_depth(path, ...)` if natural; and mention units (mm) in docstrings.
+- Return numpy / OpenCV-friendly array (dtype uint16, shape (height,width)) for the depth frame.
+
+## Constraints
+- Stay on branch `PR-1674-sdk`; use `main` as base (trunk). Do NOT push/merge (orchestrator opens PR). You MAY commit (`feat: PR-1674 ...`).
+- Do NOT modify pib-backend; only this pib-sdk repo.
+- Keep the change focused in src/pib_sdk/features/camera.py (+ tests).
+- Add/adjust unit tests (with mocked roslibpy service responses) for get_depth_frame decode and get_distance_at_px.
+- Do NOT commit `.hermes/plans/**`. Report REAL results (tests you could run).
+- numpy must stay an optional/soft dependency like the existing drawing extra — do not hard-require it at import time if the rest of the SDK avoids it (match how features/drawing handles Pillow: `pip install pib-sdk[drawing]`). Prefer a lazy `import numpy` inside the methods.
+
+## Self-check
+- Any available tests: `python3 -m pytest` (or the SDK's test runner) for the camera module with mocks passes.
+- `git diff --name-only origin/main...PR-1674-sdk` shows camera.py + tests only.
+
+FINAL REPORT: files changed, the new method signatures, how numpy is handled (lazy), real test results, confirmation you did not merge/push, commit hash if committed.

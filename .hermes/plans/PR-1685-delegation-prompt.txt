@@ -1,0 +1,77 @@
+Implement PR-1685 per the verified facts below.
+
+Ticket: https://pib-rocks.atlassian.net/browse/PR-1685
+Repo: pib-sdk — /home/pib/opencode/pib-sdk, branch `PR-1685` (from main `b473194`). Trunk is `main` (no develop).
+
+## Goal
+Expose TIMED multi-waypoint trajectory playback in pib-sdk so programs can play pose sequences that
+BLEND smoothly through the waypoints instead of stopping at each pose. This is the prerequisite for
+PR-1161 (Blockly play movement sequence with smooth transitions).
+
+## Backend contract (pib-backend develop, PR-1660 merged as f6c2609e — DO NOT modify pib-backend)
+- `ros_packages/motors/pib_motors/pib_motors/trajectory_executor.py`: fixed-rate (100 Hz) software trajectory
+  controller. Interpolates each joint over `time_from_start` via-points with monotone cubic Hermite (PCHIP),
+  so motion blends THROUGH via-points instead of stopping.
+- `motor_control.apply_joint_trajectory` uses the executor when `is_software_trajectory(jt)` is True, which is:
+  * any message with a non-zero `time_from_start`, OR
+  * more than one waypoint in the STANDARD JointTrajectory layout (each point carries a position per joint).
+  Otherwise the legacy path (one point per motor, single position, positions[0]) is used -> stop-per-point.
+- ROS interface: `datatypes/srv/ApplyJointTrajectory.srv` = request `trajectory_msgs/JointTrajectory joint_trajectory`
+  -> response `bool successful`.
+- Positions are in INTERNAL units (hundredths of a degree). See `features/poses.py` (`_INTERNAL_UNITS_PER_DEGREE`).
+
+## Current pib-sdk state (the gap)
+`src/pib_sdk/control.py`, class `Write`:
+- `_trajectory_point(position_internal)` (staticmethod) builds
+  `{"positions":[float(position_internal)], "velocities":[], "accelerations":[], "effort":[],
+    "time_from_start":{"sec":0,"nanosec":1_000_000}}`  # hardcoded 1 ms.
+- `_send_joint_trajectory(joint_names, positions_internal)` sends
+  `points = [self._trajectory_point(p) for p in positions_internal]` -> ONE POINT PER MOTOR, single position each.
+  That is the LEGACY shape and does NOT trigger the backend's smooth executor.
+`src/pib_sdk/features/poses.py`:
+- `play_pose_sequence(writer, backend, sequence, *, by="name")` is the naive variant:
+  `set_pose` per pose (single-point legacy move) + `time.sleep(hold_seconds)` -> robot STOPS at each pose.
+- Also present: `list_poses`, `get_pose`, `apply_pose`, `set_pose`, `save_current_pose`.
+
+## Deliverables
+1. `Write`: add a public method to send a TIMED, standard-layout trajectory, e.g.
+   `send_timed_trajectory(joint_names: list[str], waypoints: list[tuple[list[float], float]]) -> bool`
+   - `waypoints[i] = (positions_internal_per_joint, time_from_start_seconds)` where the time is ABSOLUTE from
+     trajectory start.
+   - Build ONE JointTrajectory: `joint_names` + points where EACH point carries `positions` for ALL joints
+     (standard layout) and a real `time_from_start` (convert seconds -> {"sec": int, "nanosec": int}).
+   - Send it over the SAME `_joint_trajectory_service` (`datatypes/ApplyJointTrajectory`). Return the bool.
+   - Do NOT change existing `move()` / `_send_joint_trajectory()` behaviour (legacy callers must keep working).
+2. `features/poses.py`: add
+   `play_pose_sequence_timed(writer, backend, schedule, *, by="name") -> None`
+   - `schedule = [(pose_identifier, seconds_for_this_leg), ...]` (per-leg duration; friendlier for the future
+     Blockly block). Internally ACCUMULATE the per-leg seconds into ABSOLUTE `time_from_start` per waypoint.
+   - Resolve each pose via `get_pose` (name or pose_id per `by`).
+   - `joint_names` = stable union across all poses (first-seen order).
+   - For a motor missing from a given pose, carry forward its value from the previous waypoint; for motors that
+     first appear at a later waypoint, backfill the earlier waypoints with that motor's first known value so
+     every point carries a value for every joint.
+   - Send via `writer.send_timed_trajectory(...)`. Keep it simple and documented.
+   - Keep the existing naive `play_pose_sequence` working. Update its now-outdated docstring note (it claims
+     pib-backend has no timed/sequence concept — the backend now supports timed via-point trajectories).
+3. Tests (no live robot): add unit tests with a stub/fake joint-trajectory service asserting:
+   - point count == number of schedule entries,
+   - each point's `positions` has one entry per joint in `joint_names`,
+   - `time_from_start` accumulates correctly (absolute, per-leg sum),
+   - the emitted message matches the software-trajectory shape (multi-point + positions-per-joint + non-zero time_from_start).
+
+## Constraints
+- Stay on branch `PR-1685` (base `main`). Do NOT push/merge (the orchestrator opens the PR). You MAY commit
+  (`feat: PR-1685 ...`).
+- Do NOT modify pib-backend or any other repo. Only pib-sdk.
+- Do NOT commit `.hermes/plans/**`. Do NOT commit if tests fail. Report REAL results.
+- Keep the change surgical: control.py (+ poses.py + tests).
+
+## Verify (orchestrator will re-run)
+- `cd /home/pib/opencode/pib-sdk && PYTHONPATH=src python3 -m pytest tests/ -q`
+  (NOTE: without `PYTHONPATH=src` pytest imports the INSTALLED site-packages pib_sdk, not this branch.)
+- `git diff --name-only origin/main...HEAD` should show control.py + poses.py + tests only.
+
+FINAL REPORT: files changed, the new method signatures, the exact emitted JointTrajectory shape (points,
+positions-per-joint, time_from_start), how per-leg seconds are accumulated, real pytest results, confirmation
+you did not push/merge or touch pib-backend, commit hash if committed.
