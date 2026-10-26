@@ -24,6 +24,7 @@ import logging
 import numbers
 import threading
 import time
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -135,6 +136,49 @@ _TOKENS_BY_NAME: dict[str, _Token] = {
 }
 
 # Default motor settings, mirroring the fields of the MotorSettings message.
+@dataclass(frozen=True)
+class MotorTrajectoryResult:
+    """Per-motor outcome from ``/apply_joint_trajectory`` (``datatypes/MotorResult``)."""
+
+    motor_name: str
+    successful: bool
+    error_code: str
+    detail: str
+
+
+@dataclass(frozen=True)
+class ApplyJointTrajectoryResult:
+    """Parsed ``ApplyJointTrajectory`` service response."""
+
+    successful: bool
+    results: tuple[MotorTrajectoryResult, ...]
+
+    @property
+    def failed(self) -> tuple[MotorTrajectoryResult, ...]:
+        return tuple(r for r in self.results if not r.successful)
+
+    def raise_if_failed(self) -> None:
+        """Raise :class:`JointTrajectoryError` when any motor did not succeed."""
+        if self.successful and not self.failed:
+            return
+        parts = [
+            f"{r.motor_name}: {r.error_code or 'failed'}"
+            + (f" ({r.detail})" if r.detail else "")
+            for r in self.failed
+        ]
+        if not parts and not self.successful:
+            parts.append("trajectory rejected")
+        raise JointTrajectoryError("; ".join(parts), result=self)
+
+
+class JointTrajectoryError(Exception):
+    """Joint trajectory rejected or one or more motors failed."""
+
+    def __init__(self, message: str, *, result: ApplyJointTrajectoryResult | None = None) -> None:
+        super().__init__(message)
+        self.result = result
+
+
 DEFAULT_SETTINGS: dict[str, Any] = {
     "turned_on": True,
     "visible": True,
@@ -319,6 +363,7 @@ class Write:
         self.verify_echo: bool = False
         self._echo_lock = threading.Lock()
         self._last_trajectory_echo: dict[str, Any] | None = None
+        self.last_joint_trajectory_result: ApplyJointTrajectoryResult | None = None
         self._joint_trajectory_topic.subscribe(self._remember_trajectory_echo)
 
     def __enter__(self) -> Write:
@@ -445,16 +490,37 @@ class Write:
             degrees = [uniform_deg] * len(joint_names)
 
         positions_rad = [_degrees_to_radians(angle) for angle in degrees]
-        ok = self._send_joint_trajectory(joint_names, positions_rad)
+        result = self._send_joint_trajectory(joint_names, positions_rad)
+        ok = result.successful
         if ok and self.verify_echo:
             ok = self._await_trajectory_echo(joint_names, positions_rad)
         return ok
+
+    def send_timed_trajectory_rad(
+        self,
+        joint_names: list[str],
+        waypoints: list[tuple[list[float], float]],
+    ) -> ApplyJointTrajectoryResult:
+        """Send a timed trajectory; each waypoint position list is in radians."""
+        return self._send_timed_trajectory(joint_names, waypoints, _positions_to_radians)
+
+    def send_timed_trajectory_deg(
+        self,
+        joint_names: list[str],
+        waypoints: list[tuple[list[float], float]],
+    ) -> ApplyJointTrajectoryResult:
+        """Send a timed trajectory; each waypoint position list is in degrees."""
+        return self._send_timed_trajectory(
+            joint_names,
+            waypoints,
+            lambda positions_deg: [_degrees_to_radians(p) for p in positions_deg],
+        )
 
     def send_timed_trajectory(
         self,
         joint_names: list[str],
         waypoints: list[tuple[list[float], float]],
-    ) -> bool:
+    ) -> ApplyJointTrajectoryResult:
         """Send a timed via-point JointTrajectory in the standard layout.
 
         ``waypoints[i]`` is ``(positions_centideg_per_joint, time_from_start_seconds)``
@@ -463,48 +529,33 @@ class Write:
         is the shape pib-backend interpolates through instead of stopping at each
         pose. Positions are pib centidegrees (hundredths of a degree), matching
         pib-backend storage; they are converted to radians before the rosbridge call.
+
+        Prefer :meth:`send_timed_trajectory_rad` or :meth:`send_timed_trajectory_deg`
+        when working in radians or degrees.
         """
+        return self._send_timed_trajectory(
+            joint_names, waypoints, lambda positions: [_centidegrees_to_radians(p) for p in positions]
+        )
+
+    def _send_timed_trajectory(
+        self,
+        joint_names: list[str],
+        waypoints: list[tuple[list[float], float]],
+        positions_to_rad: Any,
+    ) -> ApplyJointTrajectoryResult:
         if not joint_names:
             raise ValueError("joint_names must not be empty")
         if not waypoints:
             raise ValueError("waypoints must not be empty")
 
         points: list[dict[str, Any]] = []
-        for positions_centideg, time_from_start_seconds in waypoints:
-            if len(positions_centideg) != len(joint_names):
+        for positions, time_from_start_seconds in waypoints:
+            if len(positions) != len(joint_names):
                 raise ValueError("each waypoint must have one position per joint_name")
-            positions_rad = [_centidegrees_to_radians(p) for p in positions_centideg]
-            points.append(
-                {
-                    "positions": positions_rad,
-                    "velocities": [],
-                    "accelerations": [],
-                    "effort": [],
-                    "time_from_start": _seconds_to_time_from_start(time_from_start_seconds),
-                }
-            )
+            positions_rad = positions_to_rad(positions)
+            points.append(self._trajectory_point(positions_rad, time_from_start_seconds))
 
-        request = roslibpy.ServiceRequest(
-            {
-                "joint_trajectory": {
-                    "joint_names": list(joint_names),
-                    "points": points,
-                }
-            }
-        )
-        try:
-            response = self._joint_trajectory_service.call(request, timeout=2.5)
-            ok = bool(response.get("successful", False))
-            logger.debug(
-                "send_timed_trajectory(%s, %d waypoints) -> %s",
-                joint_names,
-                len(waypoints),
-                ok,
-            )
-            return ok
-        except Exception as error:
-            logger.error("Timed trajectory call failed: %s", error)
-            return False
+        return self._apply_joint_trajectory_message(joint_names, points)
 
     def _move_hand(self, action: _Token) -> bool:
         """Open or close a hand (fingers to -90 to open, +90 to close)."""
@@ -520,55 +571,85 @@ class Write:
         return self.move(hand, angle)
 
     @staticmethod
-    def _trajectory_point(position_rad: float) -> dict[str, Any]:
-        # Exactly one value per point; the node reads positions[0].
+    def _trajectory_point(
+        positions_rad: list[float], time_from_start_seconds: float = 0.001
+    ) -> dict[str, Any]:
+        """One ROS point: ``positions[i]`` pairs with ``joint_names[i]``."""
         return {
-            "positions": [float(position_rad)],
+            "positions": [float(p) for p in positions_rad],
             "velocities": [],
             "accelerations": [],
             "effort": [],
-            "time_from_start": {"sec": 0, "nanosec": 1_000_000},  # 1 ms
+            "time_from_start": _seconds_to_time_from_start(time_from_start_seconds),
         }
 
-    def _send_joint_trajectory(
-        self, joint_names: list[str], positions_rad: list[float]
-    ) -> bool:
-        """Send one ApplyJointTrajectory request for all joints, with per-joint fallback."""
-        assert len(joint_names) == len(positions_rad), "names/positions length mismatch"
+    @staticmethod
+    def _parse_apply_joint_trajectory_response(
+        response: dict[str, Any],
+    ) -> ApplyJointTrajectoryResult:
+        results: list[MotorTrajectoryResult] = []
+        for entry in response.get("results") or []:
+            results.append(
+                MotorTrajectoryResult(
+                    motor_name=str(entry.get("motor_name", "")),
+                    successful=bool(entry.get("successful", False)),
+                    error_code=str(entry.get("error_code", "")),
+                    detail=str(entry.get("detail", "")),
+                )
+            )
+        successful = bool(response.get("successful", False))
+        if results and not successful:
+            successful = all(r.successful for r in results)
+        return ApplyJointTrajectoryResult(successful=successful, results=tuple(results))
 
+    def _log_trajectory_failures(self, result: ApplyJointTrajectoryResult) -> None:
+        for motor in result.failed:
+            logger.error(
+                "Joint trajectory failed for %s: %s%s",
+                motor.motor_name,
+                motor.error_code or "failed",
+                f" ({motor.detail})" if motor.detail else "",
+            )
+
+    def _apply_joint_trajectory_message(
+        self, joint_names: list[str], points: list[dict[str, Any]]
+    ) -> ApplyJointTrajectoryResult:
         request = roslibpy.ServiceRequest(
             {
                 "joint_trajectory": {
                     "joint_names": list(joint_names),
-                    "points": [self._trajectory_point(p) for p in positions_rad],
+                    "points": points,
                 }
             }
         )
         try:
             response = self._joint_trajectory_service.call(request, timeout=2.5)
-            ok = bool(response.get("successful", False))
-            logger.debug("move(%s -> %s rad) -> %s", joint_names, positions_rad, ok)
-            if ok or len(joint_names) == 1:
-                return ok
-
-            # Batched request rejected: retry once, one joint at a time.
-            logger.warning("Batched joint trajectory rejected; falling back to per-joint sends.")
-            all_ok = True
-            for name, position in zip(joint_names, positions_rad):
-                single_request = roslibpy.ServiceRequest(
-                    {
-                        "joint_trajectory": {
-                            "joint_names": [name],
-                            "points": [self._trajectory_point(position)],
-                        }
-                    }
-                )
-                single_response = self._joint_trajectory_service.call(single_request, timeout=2.0)
-                all_ok &= bool(single_response.get("successful", False))
-            return all_ok
+            result = self._parse_apply_joint_trajectory_response(response)
+            self.last_joint_trajectory_result = result
+            if not result.successful:
+                self._log_trajectory_failures(result)
+            return result
         except Exception as error:
-            logger.error("Batched move call failed: %s", error)
-            return False
+            logger.error("ApplyJointTrajectory call failed: %s", error)
+            result = ApplyJointTrajectoryResult(successful=False, results=())
+            self.last_joint_trajectory_result = result
+            return result
+
+    def _send_joint_trajectory(
+        self, joint_names: list[str], positions_rad: list[float]
+    ) -> ApplyJointTrajectoryResult:
+        """Send one point with all joint positions (standard JointTrajectory layout)."""
+        assert len(joint_names) == len(positions_rad), "names/positions length mismatch"
+        result = self._apply_joint_trajectory_message(
+            joint_names, [self._trajectory_point(positions_rad)]
+        )
+        logger.debug(
+            "move(%s -> %s rad) -> %s",
+            joint_names,
+            positions_rad,
+            result.successful,
+        )
+        return result
 
     def _await_trajectory_echo(
         self, names: list[str], positions_rad: list[float], timeout: float = 0.15
@@ -582,19 +663,17 @@ class Write:
             if message:
                 trajectory = message.get("joint_trajectory", {})
                 points = trajectory.get("points", [])
-                if trajectory.get("joint_names", []) == names and points:
-                    # Accept either N single-value points or one N-value point.
-                    if len(points) == len(expected_positions):
-                        values = [float(point.get("positions", [None])[0]) for point in points]
-                        if values == expected_positions:
-                            return True
-                    elif len(points) == 1:
-                        values = [float(v) for v in points[0].get("positions", [])]
-                        if values == expected_positions:
-                            return True
+                if trajectory.get("joint_names", []) == names and len(points) == 1:
+                    values = [float(v) for v in points[0].get("positions", [])]
+                    if values == expected_positions:
+                        return True
             time.sleep(0.005)
         logger.debug("joint-trajectory echo verification timed out")
         return True  # non-fatal
+
+
+def _positions_to_radians(positions_rad: list[float]) -> list[float]:
+    return [float(p) for p in positions_rad]
 
 
 # --------------------------------------------------------------------------- #

@@ -193,14 +193,14 @@ def test_seconds_to_time_from_start_splits_sec_and_nanosec():
 def test_send_timed_trajectory_uses_standard_layout(fake_roslibpy):
     _topics, services = fake_roslibpy
     writer = Write(host="localhost")
-    services["/apply_joint_trajectory"].default_response = {"successful": True}
+    services["/apply_joint_trajectory"].default_response = {"successful": True, "results": []}
 
-    ok = writer.send_timed_trajectory(
+    result = writer.send_timed_trajectory(
         ["elbow_right", "wrist_right"],
         [([4500.0, -1000.0], 1.0), ([0.0, -500.0], 2.5)],
     )
 
-    assert ok is True
+    assert result.successful is True
     trajectory = services["/apply_joint_trajectory"].calls[0]["joint_trajectory"]
     points = trajectory["points"]
     assert trajectory["joint_names"] == ["elbow_right", "wrist_right"]
@@ -222,20 +222,83 @@ def test_send_timed_trajectory_uses_standard_layout(fake_roslibpy):
     assert points[1]["time_from_start"] == {"sec": 2, "nanosec": 500_000_000}
 
 
-def test_move_sends_radian_positions_on_rosbridge(fake_roslibpy):
+def test_move_vector_mode_sends_one_point_with_all_positions(fake_roslibpy):
     _topics, services = fake_roslibpy
     writer = Write(host="localhost")
-    services["/apply_joint_trajectory"].default_response = {"successful": True}
+    services["/apply_joint_trajectory"].default_response = {"successful": True, "results": []}
 
     writer.move("elbow_right", 45.0, "wrist_right", -10.0)
 
     trajectory = services["/apply_joint_trajectory"].calls[0]["joint_trajectory"]
     points = trajectory["points"]
     assert trajectory["joint_names"] == ["elbow_right", "wrist_right"]
-    assert len(points) == 2
-    np.testing.assert_allclose(points[0]["positions"], [np.deg2rad(45.0)], rtol=0, atol=1e-12)
-    np.testing.assert_allclose(points[1]["positions"], [np.deg2rad(-10.0)], rtol=0, atol=1e-12)
+    assert len(points) == 1
+    np.testing.assert_allclose(
+        points[0]["positions"],
+        [np.deg2rad(45.0), np.deg2rad(-10.0)],
+        rtol=0,
+        atol=1e-12,
+    )
     assert points[0]["time_from_start"] == {"sec": 0, "nanosec": 1_000_000}
+
+
+def test_move_uniform_mode_sends_one_point_with_repeated_angles(fake_roslibpy):
+    _topics, services = fake_roslibpy
+    writer = Write(host="localhost")
+    services["/apply_joint_trajectory"].default_response = {"successful": True, "results": []}
+
+    writer.move(right_arm, -30.0)
+
+    trajectory = services["/apply_joint_trajectory"].calls[0]["joint_trajectory"]
+    points = trajectory["points"]
+    assert trajectory["joint_names"] == control._MOTOR_GROUPS["right_arm"]
+    assert len(points) == 1
+    expected = [np.deg2rad(-30.0)] * len(trajectory["joint_names"])
+    np.testing.assert_allclose(points[0]["positions"], expected, rtol=0, atol=1e-12)
+
+
+def test_apply_joint_trajectory_surfaces_per_motor_error_codes(fake_roslibpy):
+    _topics, services = fake_roslibpy
+    writer = Write(host="localhost")
+    services["/apply_joint_trajectory"].default_response = {
+        "successful": False,
+        "results": [
+            {
+                "motor_name": "elbow_right",
+                "successful": False,
+                "error_code": "out_of_range",
+                "detail": "position exceeds limit",
+            },
+            {"motor_name": "wrist_right", "successful": True, "error_code": "", "detail": ""},
+        ],
+    }
+
+    assert writer.move("elbow_right", 45.0, "wrist_right", -10.0) is False
+    result = writer.last_joint_trajectory_result
+    assert result is not None
+    assert result.successful is False
+    assert len(result.failed) == 1
+    assert result.failed[0].motor_name == "elbow_right"
+    assert result.failed[0].error_code == "out_of_range"
+
+    with pytest.raises(control.JointTrajectoryError, match="elbow_right: out_of_range"):
+        result.raise_if_failed()
+
+
+def test_send_timed_trajectory_rad_uses_increasing_time_from_start(fake_roslibpy):
+    _topics, services = fake_roslibpy
+    writer = Write(host="localhost")
+    services["/apply_joint_trajectory"].default_response = {"successful": True, "results": []}
+
+    writer.send_timed_trajectory_rad(
+        ["elbow_right", "wrist_right"],
+        [([0.0, 0.0], 0.5), ([np.deg2rad(30.0), np.deg2rad(-5.0)], 2.0)],
+    )
+
+    points = services["/apply_joint_trajectory"].calls[0]["joint_trajectory"]["points"]
+    assert len(points) == 2
+    assert points[0]["time_from_start"] == {"sec": 0, "nanosec": 500_000_000}
+    assert points[1]["time_from_start"] == {"sec": 2, "nanosec": 0}
 
 
 def test_degrees_to_radians_matches_numpy_for_move_range():
