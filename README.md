@@ -84,9 +84,10 @@ Kinematics APIs use radians and millimetres, with `*_deg` wrappers for callers
 that think in degrees. `Write.move` takes degrees at the public boundary (same
 as before). Joint positions on rosbridge (`/apply_joint_trajectory`,
 `/joint_trajectory`) are sent in **radians**; pib-backend HTTP and pose storage
-still use integer centidegrees. The low-level `Write.send_timed_trajectory`
-accepts waypoint positions in centidegrees (matching pib-backend) and converts
-them to radians before the rosbridge call. Depth pixels are unsigned 16-bit
+still use integer centidegrees. Timed motion uses the standard JointTrajectory
+layout (`send_timed_trajectory_rad` in radians, `send_timed_trajectory_deg` in
+degrees, or `send_timed_trajectory` in centidegrees for pose storage). Depth
+pixels are unsigned 16-bit
 millimetres, where zero means invalid.
 
 ### Errors and command results
@@ -95,9 +96,10 @@ Argument and model problems raise `TypeError`, `ValueError`, `KeyError`, or
 `FileNotFoundError`. Connection setup raises `ConnectionError` or
 `RuntimeError`, depending on the client; waiting APIs may raise
 `TimeoutError`. REST failures raise `BackendError`. Several live command
-methods instead return `False` on backend rejection (and `Write` also returns
-`False` after service-call failures), so check booleans when command delivery
-matters. Camera depth reads use `None`/`0.0` for unavailable data. Exact
+methods instead return `False` on backend rejection (and `Write.move` also
+returns `False` after trajectory failures), with per-motor `error_code` values
+on `Write.last_joint_trajectory_result`. Camera depth reads use `None`/`0.0`
+for unavailable data. Exact
 behavior is listed in the [API reference](docs/REFERENCE.md).
 
 ---

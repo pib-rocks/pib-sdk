@@ -70,8 +70,16 @@ They expand locally; no connection or backend lookup is involved.
 `DEFAULT_SETTINGS` enables and exposes a motor and supplies the current
 velocity, acceleration, deceleration, pulse-width, period, and ±9000 internal
 rotation-range defaults. Those setting values are passed through unchanged.
-`move` accepts degrees and converts them to radians on rosbridge;
-`send_timed_trajectory` accepts centidegrees and converts them to radians.
+`move` accepts degrees and converts them to radians on rosbridge.
+Timed trajectories accept radians via `send_timed_trajectory_rad`, degrees via
+`send_timed_trajectory_deg`, or pib centidegrees via `send_timed_trajectory`
+(matching pose storage). Every command uses the standard JointTrajectory layout:
+one `positions` entry per `joint_names` entry on each point.
+
+`MotorTrajectoryResult`, `ApplyJointTrajectoryResult`, and
+`JointTrajectoryError` model per-motor outcomes from
+`/apply_joint_trajectory`. After each trajectory call, `Write` stores the
+parsed response on `last_joint_trajectory_result`.
 
 #### `Write.set`
 
@@ -107,38 +115,76 @@ Angles are degrees in the inclusive range `[-90, 90]`. Uniform mode
 (`move(right_arm, -20)`) applies the trailing angle to every selector.
 Vector mode (`move(right_arm, a, b, c, d, e, f)`) consumes one angle per
 expanded motor; literal names may be interleaved with values. A lone hand
-action token opens or closes that hand. The method sends one batched request
-and, if rejected, retries each joint separately.
+action token opens or closes that hand. The method sends one trajectory point
+with every selected joint position in `joint_names` order.
 
-It returns the backend success flag; service errors are logged and return
+It returns the backend `successful` flag; per-motor failures are logged with
+`motor_name` and `error_code`, and the full outcome is on
+`last_joint_trajectory_result`. Service exceptions are logged and return
 `False`. Missing arguments or motors and out-of-range angles raise
 `ValueError`; malformed or unsupported arguments raise `TypeError`.
 `writer.verify_echo = True` enables best-effort trajectory echo checking,
 which is non-fatal if no echo arrives.
 
+#### `MotorTrajectoryResult`
+
+Frozen dataclass with `motor_name`, `successful`, `error_code`, and `detail`
+from each `datatypes/MotorResult` entry.
+
+#### `ApplyJointTrajectoryResult`
+
+Frozen dataclass with `successful` and `results` (a tuple of
+`MotorTrajectoryResult`). Property `failed` lists unsuccessful motors.
+`raise_if_failed()` raises `JointTrajectoryError` with `motor_name: error_code`
+details when anything failed.
+
+#### `JointTrajectoryError`
+
+Exception raised by `ApplyJointTrajectoryResult.raise_if_failed()`. Attribute
+`result` holds the originating `ApplyJointTrajectoryResult` when available.
+
+#### `Write.send_timed_trajectory_rad`
+
+`send_timed_trajectory_rad(joint_names: list[str],
+waypoints: list[tuple[list[float], float]]) -> ApplyJointTrajectoryResult`
+
+Canonical timed-motion API in **radians**. Each waypoint is
+`(positions_rad_per_joint, time_from_start_seconds)` with absolute times from
+trajectory start. Returns the parsed service response; see
+`ApplyJointTrajectoryResult`.
+
+#### `Write.send_timed_trajectory_deg`
+
+`send_timed_trajectory_deg(joint_names: list[str],
+waypoints: list[tuple[list[float], float]]) -> ApplyJointTrajectoryResult`
+
+Same as `send_timed_trajectory_rad`, but each waypoint position list is in
+degrees (the same `[-90, 90]` range as `move`).
+
 #### `Write.send_timed_trajectory`
 
 `send_timed_trajectory(joint_names: list[str],
-waypoints: list[tuple[list[float], float]]) -> bool`
+waypoints: list[tuple[list[float], float]]) -> ApplyJointTrajectoryResult`
 
-This is the low-level smooth-motion API. Each waypoint is
-`(positions_centideg_per_joint, time_from_start_seconds)`. Unlike `move`,
-positions are in pib's **centidegrees** (hundredths of a degree, matching
-pib-backend pose storage) and are converted to radians before rosbridge. Every
-positions list must match `joint_names`; times are absolute from trajectory
-start, not per-leg durations. Supply non-negative, increasing times. Each is
-converted to ROS `Duration {sec, nanosec}`.
+Centidegree variant for pib-backend pose storage. Each waypoint is
+`(positions_centideg_per_joint, time_from_start_seconds)`. Every positions list
+must match `joint_names`; times are absolute from trajectory start, not
+per-leg durations. Supply non-negative, increasing times. Each is converted to
+ROS `Duration {sec, nanosec}` before the call.
 
-The current pib-backend software trajectory controller blends through
-multi-point trajectories using monotone cubic Hermite interpolation, so
-intermediate points are via-points rather than stop-and-hold commands.
-The method returns the service success flag and returns `False` on a service
-exception. Empty names/waypoints, mismatched position counts, or negative
-times raise `ValueError`. The SDK does not itself reject equal or decreasing
-non-negative times; callers should not send them.
+The pib-backend software trajectory controller blends through multi-point
+trajectories using monotone cubic Hermite interpolation, so intermediate
+points are via-points rather than stop-and-hold commands. Empty
+names/waypoints, mismatched position counts, or negative times raise
+`ValueError`. The SDK does not itself reject equal or decreasing non-negative
+times; callers should not send them.
 
 ```python
 with Write(host="pib.local") as writer:
+    writer.send_timed_trajectory_rad(
+        ["elbow_right", "wrist_right"],
+        [([0.0, 0.0], 1.0), ([0.78, -0.17], 2.5)],
+    )
     writer.send_timed_trajectory(
         ["elbow_right", "wrist_right"],
         [([0.0, 0.0], 1.0), ([4500.0, -1000.0], 2.5)],
