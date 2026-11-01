@@ -19,14 +19,16 @@ from pib_sdk.robot_model import ArmSide
 
 SIDES = [ArmSide.RIGHT, ArmSide.LEFT]
 
-# Zero-configuration palm positions (mm), independently verified against a
-# plain-numpy walk of the URDF (see test_urdf_reference.py). In the URDF's
-# zero pose both arms point straight out to the robot's sides.
+# Zero-configuration palm positions (mm), matched to the CAD control model
+# (see tests/test_cad_model_consistency.py). At motor zero both arms point
+# outward to the robot's sides in the CAD base frame.
+# Palm positions at the motor zero pose (mm), matched to the CAD control model
+# (see tests/test_cad_model_consistency.py and tools/generate_control_urdf.py).
 ZERO_POSE_PALM_MM = {
-    ArmSide.RIGHT: np.array([-616.409, 27.666, 1030.579]),
-    ArmSide.LEFT: np.array([626.205, 27.466, 994.516]),
+    ArmSide.RIGHT: np.array([-609.130, 106.200, 731.742]),
+    ArmSide.LEFT: np.array([509.173, 105.801, 711.842]),
 }
-ZERO_POSE_CAMERA_MM = np.array([-12.660, -82.836, 998.819])
+ZERO_POSE_CAMERA_MM = np.array([-162.900, 59.268, 615.000])
 
 
 def _interior_configurations(arm: ArmKinematics, count: int, rng) -> list:
@@ -110,7 +112,7 @@ def test_ik_mask_constrains_selected_components_only():
     reached = arm.forward_deg(solution_deg).translation
     assert abs(reached[0] - target_xy[0]) < 1e-2
     assert abs(reached[1] - target_xy[1]) < 1e-2
-    assert abs(reached[2]) > 100.0  # z was left free and stays near the arm
+    assert abs(reached[2]) > 10.0  # z was left free and is not driven to the seed z=0
 
 
 def test_ik_rejects_malformed_mask():

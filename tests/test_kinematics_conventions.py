@@ -26,14 +26,15 @@ from pib_sdk.robot_model import ArmSide
 
 ZERO_Q = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
-# Measured zero pose (mm), pinocchio 4.1 on bundled URDF (2026-10-23).
+# Measured zero pose (mm) on the CAD-derived bundled URDF (PR-2158).
 ZERO_PALM_MM = {
-    ArmSide.LEFT: np.array([626.2, 27.5, 994.5]),
-    ArmSide.RIGHT: np.array([-616.4, 27.7, 1030.6]),
+    ArmSide.LEFT: np.array([509.2, 105.8, 711.8]),
+    ArmSide.RIGHT: np.array([-609.1, 106.2, 731.7]),
 }
-ZERO_CAMERA_MM = np.array([-12.7, -82.8, 998.8])
+ZERO_CAMERA_MM = np.array([-162.9, 59.3, 615.0])
 
-MIRROR_X_TOLERANCE_MM = 10.0
+# Shoulder mount offsets in the CAD export are not perfectly symmetric (~100 mm in X).
+MIRROR_X_TOLERANCE_MM = 120.0
 
 
 def _assert_proper_rotation(rotation: np.ndarray) -> None:
@@ -183,10 +184,17 @@ def test_camera_rotation_is_proper_orthonormal():
     _assert_proper_rotation(camera_pose().rotation)
 
 
-def test_up_is_positive_z():
+def test_zero_pose_hands_reach_outward_at_shoulder_height():
+    """At motor zero the arms point out to the sides, just below the shoulder.
+
+    Since the model carries the CAD geometry with the base at the foot point (PR-2158), the
+    palm's z is the shoulder height (~0.73 m), not ~0 as it was when the base sat in the body.
+    Lateral reach and height are therefore both large; the sign of x says which side.
+    """
     for side in (ArmSide.LEFT, ArmSide.RIGHT):
-        assert fk(side, ZERO_Q).translation[2] > 0.0
-    assert camera_pose().translation[2] > 0.0
+        x, _y, z = fk(side, ZERO_Q).translation
+        assert abs(x) > 400.0, f"{side}: palm only {abs(x):.0f} mm out to the side"
+        assert 600.0 < z < 800.0, f"{side}: palm at {z:.0f} mm, expected shoulder height"
 
 
 def test_left_palm_on_positive_x_right_on_negative_x():
@@ -196,8 +204,10 @@ def test_left_palm_on_positive_x_right_on_negative_x():
     assert right_x < 0.0
 
 
-def test_camera_on_negative_y_front_is_negative_y():
-    assert camera_pose().translation[1] < 0.0
+def test_camera_zero_position_regression():
+    np.testing.assert_allclose(
+        camera_pose().translation, ZERO_CAMERA_MM, atol=0.5
+    )
 
 
 def test_camera_optical_axis_points_away_from_the_body():

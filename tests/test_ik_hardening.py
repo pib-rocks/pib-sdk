@@ -261,7 +261,7 @@ def test_ik_respect_limits_always_in_range():
 
 def test_ik_fixed_seed_is_reproducible():
     arm = ArmKinematics(ArmSide.RIGHT)
-    target_xyz = [-420.0, 80.0, 950.0]
+    target_xyz = list(arm.forward_deg([40.0, -90.0, -30.0, 40.0, -90.0, 0.0]).translation)
     first = arm.inverse_deg(xyz=target_xyz, restarts=50)
     second = arm.inverse_deg(xyz=target_xyz, restarts=50)
     np.testing.assert_allclose(first, second, atol=1e-9)
