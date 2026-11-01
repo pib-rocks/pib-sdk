@@ -338,8 +338,21 @@ the target.
 
 ## Using a different or updated URDF
 
-The package ships pib's V3 URDF at `pib_sdk/data/pib_model.urdf`. To use another
-file — a newer revision, or a variant of your robot — point the loader at it:
+The package ships a kinematic URDF at `pib_sdk/data/pib_model.urdf`. Since PR-2158
+it is **generated from the CAD control model** (`pib-3d/urdf/pib.control.urdf` and
+`joints/mapping.json`) via `tools/generate_control_urdf.py`, not hand-tuned
+ideal link lengths. That is a deliberate behaviour change: `get_hand_position_xyz`,
+IK, and drawing now describe the physical robot. Example zero-pose palm positions
+(mm, base frame) moved from about `[-616, 28, 1031]` / `[626, 27, 995]` (old
+ideal model) to about `[-609, 106, -41]` / `[509, 106, -61]` (CAD). Regenerate
+after CAD updates:
+
+```bash
+python tools/generate_control_urdf.py
+python tools/generate_control_urdf.py --check   # CI: fail if output is stale
+```
+
+To use another file — a newer revision, or a variant of your robot — point the loader at it:
 
 ```python
 from pib_sdk import set_urdf_path
@@ -368,6 +381,7 @@ ruff format src tests
 python tools/check_doc_coverage.py
 python tools/check_doc_links.py
 python tools/check_examples.py
+python tools/generate_control_urdf.py --check
 python -m build # build the sdist and wheel
 ```
 

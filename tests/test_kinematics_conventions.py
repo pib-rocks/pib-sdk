@@ -26,14 +26,15 @@ from pib_sdk.robot_model import ArmSide
 
 ZERO_Q = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
-# Measured zero pose (mm), pinocchio 4.1 on bundled URDF (2026-10-23).
+# Measured zero pose (mm) on the CAD-derived bundled URDF (PR-2158).
 ZERO_PALM_MM = {
-    ArmSide.LEFT: np.array([626.2, 27.5, 994.5]),
-    ArmSide.RIGHT: np.array([-616.4, 27.7, 1030.6]),
+    ArmSide.LEFT: np.array([509.2, 105.8, -61.3]),
+    ArmSide.RIGHT: np.array([-609.1, 106.2, -41.4]),
 }
-ZERO_CAMERA_MM = np.array([-12.7, -82.8, 998.8])
+ZERO_CAMERA_MM = np.array([-162.9, 59.3, -158.1])
 
-MIRROR_X_TOLERANCE_MM = 10.0
+# Shoulder mount offsets in the CAD export are not perfectly symmetric (~100 mm in X).
+MIRROR_X_TOLERANCE_MM = 120.0
 
 
 def _assert_proper_rotation(rotation: np.ndarray) -> None:
@@ -183,10 +184,11 @@ def test_camera_rotation_is_proper_orthonormal():
     _assert_proper_rotation(camera_pose().rotation)
 
 
-def test_up_is_positive_z():
+def test_zero_pose_hands_reach_outward_along_x():
+    """At motor zero the palms sit to the left/right of the base, not along +Z."""
     for side in (ArmSide.LEFT, ArmSide.RIGHT):
-        assert fk(side, ZERO_Q).translation[2] > 0.0
-    assert camera_pose().translation[2] > 0.0
+        translation = fk(side, ZERO_Q).translation
+        assert abs(translation[0]) > abs(translation[2])
 
 
 def test_left_palm_on_positive_x_right_on_negative_x():
@@ -196,8 +198,10 @@ def test_left_palm_on_positive_x_right_on_negative_x():
     assert right_x < 0.0
 
 
-def test_camera_on_negative_y_front_is_negative_y():
-    assert camera_pose().translation[1] < 0.0
+def test_camera_zero_position_regression():
+    np.testing.assert_allclose(
+        camera_pose().translation, ZERO_CAMERA_MM, atol=0.5
+    )
 
 
 def test_camera_optical_axis_points_away_from_the_body():

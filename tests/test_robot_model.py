@@ -59,9 +59,14 @@ def test_coerce_arm_side_normalises_strings():
 
 @pytest.mark.parametrize("definition", ARM_DEFINITIONS, ids=lambda d: d.name)
 def test_arm_joint_limits_match_urdf(definition):
+    """Limits come from the CAD control URDF (continuous joints use ±180° as revolute)."""
     lower_deg, upper_deg = get_chain_model(definition).joint_limits_deg
-    np.testing.assert_allclose(lower_deg, [-90.0, -90.0, -90.0, -45.0, -90.0, -30.0])
-    np.testing.assert_allclose(upper_deg, [90.0, 90.0, 90.0, 90.0, 90.0, 30.0])
+    np.testing.assert_allclose(
+        lower_deg, [-180.0, -90.0, -90.0, -67.5, -90.0, -180.0], atol=0.05
+    )
+    np.testing.assert_allclose(
+        upper_deg, [180.0, 90.0, 90.0, 67.5, 90.0, 180.0], atol=0.05
+    )
 
 
 def test_models_are_cached_and_scaled_to_millimetres():
