@@ -39,14 +39,14 @@
 <origin xyz="0.087 0.106 -0.2836" rpy="3.14159 7.65526678e-19 5.6405998e-17"/>
 <parent link="urdf_body"/>
 <child link="urdf_left_shoulder_vertical"/>
-<axis xyz="1.0 0 0"/>
+<axis xyz="-1.0 0 0"/>
 <limit effort="1" velocity="20" lower="-3.1415926535897931" upper="3.1415926535897931"/>
 </joint>
 <joint name="shoulder_horizontal_left" type="revolute">
 <origin xyz="0.0649 1.36643228e-07 -0.0372" rpy="1.57079633 3.6732051e-06 -1.5708"/>
 <parent link="urdf_left_shoulder_vertical"/>
 <child link="urdf_left_shoulder_horizontal"/>
-<axis xyz="0 -1.0 0"/>
+<axis xyz="0 1.0 0"/>
 <limit effort="1" velocity="20" lower="-1.5708" upper="1.5708"/>
 </joint>
 <joint name="upper_arm_left" type="revolute">

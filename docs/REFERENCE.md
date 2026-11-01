@@ -232,6 +232,14 @@ frame (mm):
 | right | travel zero→observe | 662.6 | 563.9 |
 | left | travel zero→observe | 650.2 | 562.1 |
 
+**Left shoulder axes (since 0.9.0).** The two left shoulder joints had their sign inverted:
+the same joint vector turned the left arm against the right one, so a pose that should have
+mirrored the right arm landed on the other side of the body. Fixed by regenerating from the
+corrected `joints/mapping.json` (pib-3d v0.5.0). For the same joint input the left hand now
+sits up to **0.8 m away** from where 0.8.0 put it (mean 0.41 m over 200 sampled poses, zero at
+the zero pose) — those 0.8.0 poses were wrong, not merely different. Right arm and base frame
+are unchanged; the bundled URDF is again identical to the CAD control model, joint for joint.
+
 ### Pose conversion
 
 | API | Signature and behavior |

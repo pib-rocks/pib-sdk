@@ -218,10 +218,14 @@ def test_clik_crosscheck_agrees_on_tip_pose(side):
     for q_seed_deg in _interior_joint_samples(arm, 40, rng):
         q_seed = np.deg2rad(q_seed_deg)
         target = arm.forward(q_seed)
+        # 60 restarts: with the corrected left-shoulder axes (pib-3d v0.5.0) one of the forty
+        # seeds lands in a narrow corridor between the elbow limit and the body and the solver
+        # needs more attempts from a zero guess. The pose itself is reachable - sample 3 of the
+        # left seed set converges with 60 and not with 20.
         sdk_solution = arm.inverse(
             xyz=target.translation,
             tolerance=DEFAULT_TOLERANCE,
-            restarts=20,
+            restarts=60,
             initial_guess_rad=np.zeros(6),
         )
         clik_solution, clik_ok = clik_position_only(

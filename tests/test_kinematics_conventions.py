@@ -1,6 +1,9 @@
 """Pin frame conventions and rad/deg wrapper consistency for pib_sdk.kinematics."""
 
 import inspect
+import json
+import xml.etree.ElementTree as ElementTree
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -24,6 +27,40 @@ from pib_sdk.kinematics import (
 )
 from pib_sdk.robot_model import ArmSide
 
+# The bundled model is generated from these two files (tools/generate_control_urdf.py).
+REPO_ROOT = Path(__file__).resolve().parents[1]
+PIB3D_ROOT = REPO_ROOT.parent / "pib-3d"
+BUNDLED_URDF = REPO_ROOT / "src" / "pib_sdk" / "data" / "pib_model.urdf"
+CAD_MODEL_URDF = PIB3D_ROOT / "urdf" / "pib.control.urdf"
+CAD_MAPPING = PIB3D_ROOT / "joints" / "mapping.json"
+
+SDK_TO_CAD_JOINT = {
+    "shoulder_vertical_right": "rotation_inner_shoulder_1",
+    "shoulder_horizontal_right": "rotation_shoulder_left",
+    "upper_arm_right": "central_rotator_rotation",
+    "elbow_right": "rotation_elbow",
+    "forearm_right": "rotate_forearm",
+    "wrist_right": "rotation_wrist_right",
+    "shoulder_vertical_left": "rotation_inner_shoulder",
+    "shoulder_horizontal_left": "rotation_shoulder_left_1",
+    "upper_arm_left": "central_rotator_rotation_1",
+    "elbow_left": "rotation_elbow_1",
+    "forearm_left": "rotate_forearm_1",
+    "wrist_left": "rotation_wrist_left",
+    "head_horizontal": "gearing_rotation__new_body_",
+    "head_vertical": "nodding_rotation",
+}
+
+# Mapping motor name -> bundled SDK joint name, where they differ.
+SDK_JOINT_BY_MOTOR = {
+    "upper_arm_left_rotation": "upper_arm_left",
+    "upper_arm_right_rotation": "upper_arm_right",
+    "lower_arm_left_rotation": "forearm_left",
+    "lower_arm_right_rotation": "forearm_right",
+    "turn_head_motor": "head_horizontal",
+    "tilt_forward_motor": "head_vertical",
+}
+
 ZERO_Q = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
 # Measured zero pose (mm) on the CAD-derived bundled URDF (PR-2158).
@@ -34,7 +71,6 @@ ZERO_PALM_MM = {
 ZERO_CAMERA_MM = np.array([-162.9, 59.3, 615.0])
 
 # Shoulder mount offsets in the CAD export are not perfectly symmetric (~100 mm in X).
-MIRROR_X_TOLERANCE_MM = 120.0
 
 
 def _assert_proper_rotation(rotation: np.ndarray) -> None:
@@ -221,11 +257,52 @@ def test_camera_optical_axis_points_away_from_the_body():
     assert np.dot(axis_xy, toward_body_xy) < 0.0
 
 
-def test_mirrored_joints_mirror_palm_x():
-    """The same joint vector on left vs right arms mirrors palm X (within tolerance)."""
-    left_arm = ArmKinematics(ArmSide.LEFT)
-    right_arm = ArmKinematics(ArmSide.RIGHT)
-    q = np.deg2rad([15.0, -10.0, 20.0, -5.0, 12.0, 0.0])
-    left_x = left_arm.forward(q).translation[0]
-    right_x = right_arm.forward(q).translation[0]
-    np.testing.assert_allclose(left_x, -right_x, atol=MIRROR_X_TOLERANCE_MM)
+def test_bundled_axes_follow_the_mapping_directions():
+    """Every driven joint must carry the CAD axis, negated where the mapping says -1.
+
+    The arms are not mirror-symmetric in the CAD (the two shoulder mountings sit 148 mm apart
+    in x), so "the same joint vector mirrors the palms" is not a property this model has - it
+    held at one pose and by luck. What must hold is the sign convention itself: the generator
+    bakes `direction` into the axis, and a wrong direction silently turns one arm against the
+    other. This checks the baked result against joints/mapping.json.
+    """
+    if not CAD_MODEL_URDF.exists() or not CAD_MAPPING.exists():
+        pytest.skip("pib-3d CAD model not available next to this checkout")
+    cad_root = ElementTree.parse(CAD_MODEL_URDF).getroot()
+    cad_axes = {}
+    for joint in cad_root.findall("joint"):
+        axis = joint.find("axis")
+        if axis is not None:
+            cad_axes[joint.get("name")] = np.array(
+                [float(v) for v in axis.get("xyz").split()]
+            )
+
+    sdk_root = ElementTree.parse(BUNDLED_URDF).getroot()
+    sdk_axes = {}
+    for joint in sdk_root.findall("joint"):
+        axis = joint.find("axis")
+        if axis is not None:
+            sdk_axes[joint.get("name")] = np.array([float(v) for v in axis.get("xyz").split()])
+
+    mapping = json.loads(CAD_MAPPING.read_text())["joints"]
+    checked = 0
+    for entry in mapping:
+        if entry["class"] != "driven" or entry["direction"] is None:
+            continue
+        sdk_joint = SDK_JOINT_BY_MOTOR.get(entry["motor"], entry["motor"])
+        cad_joint = SDK_TO_CAD_JOINT.get(sdk_joint)
+        if cad_joint is None:
+            continue
+        expected = cad_axes[cad_joint] * entry["direction"]
+        actual = sdk_axes[sdk_joint]
+        np.testing.assert_allclose(
+            actual,
+            expected,
+            atol=1e-9,
+            err_msg=f"{entry['motor']}: bundled axis {actual} != CAD {cad_axes[cad_joint]} "
+            f"x direction {entry['direction']}",
+        )
+        checked += 1
+
+    assert checked >= 12, f"only {checked} joints checked - the mapping or the name table changed"
+
