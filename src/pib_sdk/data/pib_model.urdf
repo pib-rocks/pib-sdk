@@ -3,7 +3,7 @@
 <link name="base_link"></link>
 <link name="urdf_body"></link>
 <joint name="base_link_to_base" type="fixed">
-<origin xyz="0 0 0" rpy="0 0 0"/>
+<origin xyz="0 0 0.7731" rpy="0 0 0"/>
 <parent link="base_link"/>
 <child link="urdf_body"/>
 </joint>

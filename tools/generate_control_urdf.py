@@ -16,6 +16,9 @@ import xml.etree.ElementTree as ElementTree
 from dataclasses import dataclass
 from pathlib import Path
 
+# Root height above the foot point, measured on the CAD model (pib-3d base frame, PR-2150).
+BASE_HEIGHT_M = 0.7731
+
 import numpy as np
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -219,7 +222,17 @@ def build_urdf_xml(control_path: Path, mapping_path: Path) -> str:
     parts.append(_emit_link("base_link"))
     parts.append(_emit_link("urdf_body"))
     parts.append(
-        _emit_fixed_joint("base_link_to_base", "base_link", "urdf_body", "0 0 0", "0 0 0")
+        # The CAD root sits at shoulder height; the published base frame is the foot point
+        # (REP-103), as it was in the previous model. Without this offset every position the SDK
+        # reports would be ~0.77 m too high and every consumer of get_hand_position_xyz would
+        # silently compare against a different origin.
+        _emit_fixed_joint(
+            "base_link_to_base",
+            "base_link",
+            "urdf_body",
+            f"0 0 {BASE_HEIGHT_M}",
+            "0 0 0",
+        )
     )
 
     parts.append(_emit_link("urdf_head_base"))

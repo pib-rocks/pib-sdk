@@ -49,6 +49,7 @@ POSES_DEG = {
     "sample": (10.0, -20.0, 15.0, -25.0, 30.0, 5.0),
 }
 
+BASE_HEIGHT_MM = 773.1  # root height above the foot point, see generate_control_urdf.py
 TOLERANCE_MM = 0.5
 
 
@@ -180,6 +181,8 @@ def test_sdk_fk_matches_cad_control_model(
     cad_mm = cad_reference.tip_translation_mm(
         CAD_TIP_BY_SIDE[side], definition.urdf_joint_names, q_deg
     )
+    # The CAD chain is rooted in the body; the published model puts the base at the foot point.
+    cad_mm = cad_mm + np.array([0.0, 0.0, BASE_HEIGHT_MM])
     delta = float(np.linalg.norm(sdk_mm - cad_mm))
     assert delta < TOLERANCE_MM, (
         f"{side} {pose_name}: SDK vs CAD FK differ by {delta:.3f} mm "

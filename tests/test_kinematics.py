@@ -25,10 +25,10 @@ SIDES = [ArmSide.RIGHT, ArmSide.LEFT]
 # Palm positions at the motor zero pose (mm), matched to the CAD control model
 # (see tests/test_cad_model_consistency.py and tools/generate_control_urdf.py).
 ZERO_POSE_PALM_MM = {
-    ArmSide.RIGHT: np.array([-609.130, 106.200, -41.358]),
-    ArmSide.LEFT: np.array([509.173, 105.801, -61.258]),
+    ArmSide.RIGHT: np.array([-609.130, 106.200, 731.742]),
+    ArmSide.LEFT: np.array([509.173, 105.801, 711.842]),
 }
-ZERO_POSE_CAMERA_MM = np.array([-162.900, 59.268, -158.100])
+ZERO_POSE_CAMERA_MM = np.array([-162.900, 59.268, 615.000])
 
 
 def _interior_configurations(arm: ArmKinematics, count: int, rng) -> list:
