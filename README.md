@@ -341,10 +341,19 @@ the target.
 The package ships a kinematic URDF at `pib_sdk/data/pib_model.urdf`. Since PR-2158
 it is **generated from the CAD control model** (`pib-3d/urdf/pib.control.urdf` and
 `joints/mapping.json`) via `tools/generate_control_urdf.py`, not hand-tuned
-ideal link lengths. That is a deliberate behaviour change: `get_hand_position_xyz`,
-IK, and drawing now describe the physical robot. Example zero-pose palm positions
-(mm, base frame) moved from about `[-616, 28, 1031]` / `[626, 27, 995]` (old
-ideal model) to about `[-609, 106, -41]` / `[509, 106, -61]` (CAD). Regenerate
+ideal link lengths. Since **0.8.0** that is a deliberate breaking change:
+`get_hand_position_xyz`, IK, and drawing describe the physical robot; palm Z is
+about **0.3 m lower** than in 0.7.x for the same joints (correction, not a
+regression). Example zero-pose positions (mm, base frame):
+
+| arm | pose | 0.7.4 | 0.8.0 |
+|---|---|---|---|
+| right | zero | -616.4, 27.7, 1030.6 | -609.1, 106.2, 731.7 |
+| right | observe | -81.2, 357.9, 822.1 | -150.3, 370.4, 537.5 |
+| left | zero | 626.2, 27.5, 994.5 | 509.2, 105.8, 711.8 |
+
+See [docs/REFERENCE.md](docs/REFERENCE.md) for travel distances and frame notes.
+Regenerate
 after CAD updates:
 
 ```bash

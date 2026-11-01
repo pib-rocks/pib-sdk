@@ -216,6 +216,22 @@ All angles are degrees, translations are millimetres in pib's base frame, and
 poses are real `pinocchio.SE3` objects. RPY means `[roll, pitch, yaw]` in
 degrees with `Rz(yaw) @ Ry(pitch) @ Rx(roll)`.
 
+**CAD geometry (since 0.8.0).** The bundled URDF now carries the CAD control
+model instead of idealized link lengths. Hand positions from
+`get_hand_position_xyz` and all forward/inverse kinematics results are about
+**0.3 m lower in Z** than in 0.7.x for the same joint commands — a correction
+to match the physical robot, not a solver regression. The base frame is
+unchanged (foot point, Z up, REP-103). Measured palm positions in the published
+frame (mm):
+
+| arm | pose | 0.7.4 | 0.8.0 |
+|---|---|---|---|
+| right | zero | -616.4, 27.7, 1030.6 | -609.1, 106.2, 731.7 |
+| right | observe | -81.2, 357.9, 822.1 | -150.3, 370.4, 537.5 |
+| left | zero | 626.2, 27.5, 994.5 | 509.2, 105.8, 711.8 |
+| right | travel zero→observe | 662.6 | 563.9 |
+| left | travel zero→observe | 650.2 | 562.1 |
+
 ### Pose conversion
 
 | API | Signature and behavior |
