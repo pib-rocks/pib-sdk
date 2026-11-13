@@ -416,7 +416,13 @@ class Write:
                 if value is not None and key != "position":
                     motor_settings[key] = value
 
-            request = roslibpy.ServiceRequest({"motor_settings": motor_settings})
+            # The settings message cannot express "not provided": an omitted field
+            # arrives as 0/false on the robot and is written to the motor. Name the
+            # fields we actually set so the node keeps every other value (PR-2319).
+            apply_fields = sorted(key for key in motor_settings if key != "motor_name")
+            request = roslibpy.ServiceRequest(
+                {"motor_settings": motor_settings, "apply_fields": apply_fields}
+            )
             try:
                 response = self._motor_settings_service.call(request, timeout=5.0)
             except Exception as error:
