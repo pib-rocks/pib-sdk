@@ -246,7 +246,7 @@ with Robot(host="pib.local") as robot:
 
 | Want to... | Use | 
 |---|---|
-| Read a motor's last commanded position / live current draw | `pib_sdk.telemetry.Telemetry` |
+| Read a motor's last commanded position, measured joint states (`/joint_states`) / live current draw | `pib_sdk.telemetry.Telemetry` |
 | Talk to pib-backend's REST API directly (poses, programs, motors, camera, voice assistant...) | `pib_sdk.backend.BackendClient` |
 | Turn an image into an arm-drawn trajectory | `pib_sdk.features.drawing` |
 | Drive to / save poses created in Cerebra | `pib_sdk.features.poses` |

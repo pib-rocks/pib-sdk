@@ -468,18 +468,28 @@ flowchart LR
 
     subgraph CUR["Current -- push, continuous"]
         direction LR
-        M2["motor control node"] -->|"~4 Hz, per connected motor"| RB2["rosbridge"]
+        M2["motor_current node"] -->|"1 Hz, per connected motor"| RB2["rosbridge"]
         RB2 -->|"motor_current topic"| T2["subscribe_current() /\nget_current_ma()\nreads a background cache"]
+    end
+
+    subgraph JS["Joint states -- push, continuous"]
+        direction LR
+        M3["motor control node\nbus sweep"] -->|"sensor_msgs/JointState, radians\n10 Hz default"| RB3["rosbridge"]
+        RB3 -->|"/joint_states topic\n(subscribed on first use)"| T3["get_measured_position_deg() /\nget_joint_state() /\nsubscribe_joint_states()"]
     end
 ```
 
-`get_position_deg` answers "what did I last **tell** this motor to do" —
-pib-backend's true encoder-backed position read exists internally
-(`Motor.get_current_position()`) but is never published over rosbridge or
-REST, so it can't detect a stall or a hand-moved joint. `get_current_ma` is
-genuine live telemetry (electrical current, in milliamps); a motor with no
-current bricklet wired up simply never appears on the topic, which is
-steady state, not a bug.
+`get_position_deg` answers "what did I last **tell** this motor to do": the
+`get_joint_position` service returns the commanded target, so it can't detect
+a stall or a hand-moved joint. `get_measured_position_deg` reads
+`/joint_states`, which the motor control node fills from a bus sweep: a real
+encoder measurement on Feetech servos, but the commanded target again on a
+bricklet-only robot (the Servo Bricklet has no position feedback; pib-backend
+PR-2114). Each joint's newest reading is cached with its arrival time, and a
+reading older than `max_age` (0.5 s by default) raises
+`StaleJointStateError`. `get_current_ma` is live telemetry (electrical
+current, in milliamps); a motor with no current reading simply never appears
+on the topic, which is steady state, not a bug.
 
 ---
 

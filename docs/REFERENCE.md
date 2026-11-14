@@ -24,7 +24,7 @@ Two things are true of every module here:
 - [`pib_sdk.robot_model`](#pib_sdkrobot_model) — URDF chain definitions and Pinocchio models
 - [`pib_sdk.speech`](#pib_sdkspeech) — text-to-speech
 - [`pib_sdk.models`](#pib_sdkmodels) — start and stop on-device neural networks
-- [`pib_sdk.telemetry`](#pib_sdktelemetry) — motor position/current readback
+- [`pib_sdk.telemetry`](#pib_sdktelemetry) — commanded position, measured joint states, current
 - [`pib_sdk.backend`](#pib_sdkbackend) — low-level REST client
 - [`pib_sdk.robot`](#pib_sdkrobot) — bundles the four core clients
 - [`pib_sdk.ros_client`](#pib_sdkros_client) — the shared rosbridge connection
@@ -579,51 +579,87 @@ Two node behaviours worth knowing, both measured:
 ## `pib_sdk.telemetry`
 
 `Telemetry` mirrors `Write`'s connection pattern, but for reading rather than
-commanding. It wraps the only two motor values pib-backend actually publishes:
+commanding. It wraps the three motor values pib-backend publishes:
 
 ```python
 from pib_sdk.telemetry import Telemetry
 
 telemetry = Telemetry(host="localhost")
-print(telemetry.get_position_deg("elbow_right"))          # last commanded angle
-print(telemetry.get_positions_deg(["elbow_right", "wrist_right"]))  # batch
-print(telemetry.get_current_ma("elbow_right"))             # latest current draw (mA)
+print(telemetry.get_position_deg("elbow_right"))            # last COMMANDED angle
+print(telemetry.get_measured_position_deg("elbow_right"))   # from /joint_states
+print(telemetry.get_measured_positions_deg(["elbow_right", "wrist_right"]))
+sample = telemetry.get_joint_state()                        # whole message + stamp
+print(sample.stamp_s, sample.positions_deg)
+telemetry.subscribe_joint_states(lambda s: print(s.stamp_s, s.positions_rad))
+log = telemetry.record_joint_states(5.0)                    # list[JointStateSample]
+print(telemetry.get_current_ma("elbow_right"))              # latest current draw (mA)
 telemetry.subscribe_current(lambda name, ma: print(name, ma))
 telemetry.close()
 ```
 
-> **`get_position_deg` is not live sensor feedback.** It reports the last
-> position *commanded* — by you or anyone else — via the `get_joint_position`
-> service. pib-backend never publishes true physical position feedback over
-> rosbridge or REST (its internal `get_current_position()` reading, backed by
-> the servo's encoder, is only used by the robot's own startup-pose logic).
-> This won't detect a stall or a hand-moved joint.
+> **`get_position_deg` is the commanded target, not a measurement.** It
+> reports the last position *commanded* — by you or anyone else — via the
+> `get_joint_position` service. It won't detect a stall or a hand-moved joint.
+> It is unchanged for backward compatibility.
 >
-> **`get_current_ma` is genuine live telemetry** — electrical current in
-> milliamps (Tinkerforge Servo Bricklet units), pushed ~4×/second per
-> connected motor. A motor with no bricklet wired up simply never appears on
-> it; that's steady state, not a timeout bug. Use `timeout=` to control how
-> long `get_current_ma` waits, or `subscribe_current`/`unsubscribe_current`
-> for a continuous stream instead of one-shot reads.
+> **Measured joint states come from `/joint_states`** (`sensor_msgs/JointState`).
+> pib-backend's `motor_control` node publishes it from a bus sweep at
+> `joint_state_publish_rate_hz` (10 Hz by default). Positions are in
+> **radians** on the wire (the SDK's `*_deg` methods convert), and
+> `header.stamp` is set at publish time on the robot's clock. What a
+> position *is* depends on the actuator family (pib-backend PR-2114
+> "position kind"): **Feetech** serial servos report a **measured** encoder
+> position; the **Tinkerforge Servo Bricklet** has no position feedback, so a
+> bricklet-only robot publishes the last **commanded target** on the same
+> topic. On a robot with a Feetech bus, bricklet joints are absent from the
+> topic. The message does not say which kind it carries. No messages arrive
+> while motor power (solid-state relay) is off.
 >
-> These two values arrive over fundamentally different channels (position is
-> pulled on demand via a service call, current is pushed continuously over a
-> topic) — see the diagram at
+> Staleness is measured with this host's `time.monotonic()` at arrival, so it
+> does not depend on the robot's clock. `header.stamp` is exposed as
+> `JointStateSample.stamp_s` for logging and alignment.
+>
+> **`get_current_ma` is live telemetry** — electrical current in
+> milliamps, pushed once per second (pib-backend `motor_current` node,
+> 1.0 s timer) per connected motor. A motor with no current reading simply
+> never appears on it; that's steady state, not a timeout bug. Use `timeout=`
+> to control how long `get_current_ma` waits, or
+> `subscribe_current`/`unsubscribe_current` for a continuous stream.
+>
+> See the diagram at
 > [docs/ARCHITECTURE.md § telemetry](ARCHITECTURE.md#deep-dive-telemetry--pull-vs-push).
 
 `Telemetry(host="localhost", port=9090,
 get_position_service="get_joint_position",
-motor_current_topic="motor_current")` connects immediately and raises
-`ConnectionError` after five seconds. It owns a background current
-subscription. Use a context manager or `close() -> None`.
+motor_current_topic="motor_current", joint_states_topic="/joint_states")`
+connects immediately and raises `ConnectionError` after five seconds. It owns
+a background current subscription; `/joint_states` is subscribed on first use
+of a joint-state method. Use a context manager or `close() -> None`, which
+also drops the joint-state subscription.
 
 | Method | Parameters and return | Errors |
 |---|---|---|
-| `get_position_deg(motor_name, timeout=5.0)` | motor firmware name; returns last commanded `float` degrees | `ValueError` if rejected; service exceptions propagate |
-| `get_positions_deg(motor_names, timeout=5.0)` | iterable of names; sequentially returns `dict[str, float]` | first per-motor error propagates |
+| `get_position_deg(motor_name, timeout=5.0)` | motor firmware name; returns last **commanded** `float` degrees | `ValueError` if rejected; service exceptions propagate |
+| `get_positions_deg(motor_names, timeout=5.0)` | iterable of names; sequentially returns commanded `dict[str, float]` | first per-motor error propagates |
+| `get_measured_position_deg(motor_name, max_age=0.5, timeout=2.0)` | newest `/joint_states` position of one joint in `float` degrees | `TimeoutError` if no reading within `timeout`; `StaleJointStateError` if older than `max_age` s (`None` disables) |
+| `get_measured_positions_deg(motor_names, max_age=0.5, timeout=2.0)` | one wait for all names; each joint keeps its own newest reading; returns `dict[str, float]` degrees | as above, for the first missing or stale joint |
+| `get_joint_state(max_age=0.5, timeout=2.0)` | newest whole message as `JointStateSample` | as above |
+| `subscribe_joint_states(callback)` | registers `callback(sample: JointStateSample) -> None` for every message; subscribes the topic if needed | callback exceptions occur on the topic callback thread |
+| `unsubscribe_joint_states(callback)` | removes the callback if present; returns `None` | no error if absent |
+| `record_joint_states(duration)` | blocks `duration` s; returns `list[JointStateSample]` received meanwhile | none |
 | `get_current_ma(motor_name, timeout=2.0)` | waits for and returns cached `int` milliamps | `TimeoutError` if unseen |
 | `subscribe_current(callback)` | registers `callback(name: str, current_ma: int) -> None` | callback exceptions occur on the topic callback thread |
 | `unsubscribe_current(callback)` | removes the callback if present; returns `None` | no error if absent |
+
+`JointStateSample` is a frozen dataclass: `stamp_s: float | None`
+(`header.stamp` in seconds; ROS 2 `sec`/`nanosec` and ROS 1 `secs`/`nsecs`
+are both accepted, `None` if empty), `received_s: float` (local `time.time()`
+at arrival), `received_monotonic_s: float`, and `positions_rad: dict[str, float]`
+(only joints in this message; non-finite values dropped). Properties:
+`positions_deg -> dict[str, float]` and `age_s -> float` (seconds since arrival).
+
+`StaleJointStateError(RuntimeError)` is raised when the newest reading is
+older than `max_age`. `DEFAULT_JOINT_STATE_MAX_AGE_S = 0.5`.
 
 ---
 
